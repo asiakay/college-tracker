@@ -692,9 +692,10 @@ async function confirmImport() {
   if (ok) toast(`Imported ${ok} assignment${ok === 1 ? '' : 's'} ✓`);
   if (errors.length) toast(`${errors.length} failed: ${errors.slice(0, 2).join(', ')}`, 'fail');
 
-  // Refresh courses view
+  // Refresh courses view and bust the log-drawer assignment cache
   const { assignments } = await get('/api/assignments').catch(() => ({ assignments: asnData }));
   asnData = assignments || asnData;
+  asnCache = [...asnData];
   renderCourses();
 }
 

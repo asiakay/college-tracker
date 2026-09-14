@@ -376,7 +376,8 @@ export default {
     // ── REST: write routes (bearer-token protected) ───────────────────────────
 
     const isWrite = ["POST", "PUT", "PATCH"].includes(request.method);
-    if (isWrite && (url.pathname.startsWith("/api/") && url.pathname !== "/api/health")) {
+    const isPublicWrite = url.pathname === "/api/health" || url.pathname.endsWith("/parse-syllabus");
+    if (isWrite && url.pathname.startsWith("/api/") && !isPublicWrite) {
       if (env.MCP_SECRET_TOKEN) {
         const auth = request.headers.get("Authorization") ?? "";
         if (auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {

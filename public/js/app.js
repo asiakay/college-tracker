@@ -593,7 +593,6 @@ function loadPdfFile(file) {
 }
 
 async function parseSyllabus() {
-  if (!getToken()) { showTokenPrompt(); closeSyllabusModal(); return; }
 
   const text = document.getElementById('syllabus-text').value.trim();
   const hasPdf = !!selectedPdfBase64;

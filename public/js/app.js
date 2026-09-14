@@ -613,11 +613,11 @@ async function parseSyllabus() {
     tbody.innerHTML = parsedAssignments.map((a, i) => {
       const noDate = !a.due_date;
       const dateCell = noDate
-        ? '<span style="color:var(--ink-low);font-size:10px;">No date — skip or add manually</span>'
+        ? '<span style="color:var(--ink-low);font-size:10px;">No date</span>'
         : `<span class="mono" style="font-size:11.5px;">${esc(a.due_date)}</span>`;
       return `
-      <tr${noDate ? ' style="opacity:0.55;"' : ''}>
-        <td><input type="checkbox" class="preview-check" data-idx="${i}"${noDate ? '' : ' checked'} ${noDate ? 'disabled title="No due date — cannot import"' : ''}></td>
+      <tr>
+        <td><input type="checkbox" class="preview-check" data-idx="${i}" checked></td>
         <td>${esc(a.title)}<br><span style="font-size:11px;color:var(--ink-low);font-family:'JetBrains Mono',monospace;">${esc(a.id)}</span></td>
         <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
         <td>${dateCell}</td>
@@ -627,7 +627,7 @@ async function parseSyllabus() {
 
     // Select-all toggle
     document.getElementById('select-all').addEventListener('change', e => {
-      document.querySelectorAll('.preview-check:not([disabled])').forEach(cb => { cb.checked = e.target.checked; });
+      document.querySelectorAll('.preview-check').forEach(cb => { cb.checked = e.target.checked; });
       updateImportButton();
     });
 

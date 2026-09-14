@@ -415,8 +415,8 @@ export default {
       if (url.pathname === "/api/assignments" && request.method === "POST") {
         const { id, course_id, okr_id, title, due_date,
                 deliverable_type = "Project", weight_pct = 0, notes = null } = body as Record<string, unknown>;
-        if (!id || !course_id || !okr_id || !title || !due_date)
-          return invalid("id, course_id, okr_id, title, and due_date are required");
+        if (!id || !course_id || !okr_id || !title)
+          return invalid("id, course_id, okr_id, and title are required");
         const course = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(course_id).first();
         if (!course) return invalid(`Course '${course_id}' not found`);
         const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();

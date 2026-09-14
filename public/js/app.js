@@ -520,11 +520,11 @@ function openSyllabusModal(courseId, courseName) {
   document.getElementById('syllabus-file').value = '';
   setUploadZoneState('idle', 'Click to upload PDF');
   showModalStep(1);
-  document.getElementById('syllabus-backdrop').hidden = false;
+  document.getElementById('syllabus-backdrop').style.display = 'flex';
 }
 
 function closeSyllabusModal() {
-  document.getElementById('syllabus-backdrop').hidden = true;
+  document.getElementById('syllabus-backdrop').style.display = 'none';
   syllabusTargetCourse = null;
   parsedAssignments = [];
   selectedPdfBase64 = null;

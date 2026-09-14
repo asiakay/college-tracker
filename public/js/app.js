@@ -535,6 +535,7 @@ async function parseSyllabus() {
   const text = document.getElementById('syllabus-text').value.trim();
   if (text.length < 20) { toast('Paste some syllabus text first', 'fail'); return; }
   if (!getToken()) { showTokenPrompt(); closeSyllabusModal(); return; }
+  if (text.length > 40000) toast('Syllabus is long — only the first ~40,000 characters will be parsed', 'fail');
 
   showModalStep('loading');
 
@@ -554,18 +555,25 @@ async function parseSyllabus() {
       `Claude found ${parsedAssignments.length} assignment${parsedAssignments.length === 1 ? '' : 's'}. Uncheck any you don't want to import.`;
 
     const tbody = document.getElementById('preview-body');
-    tbody.innerHTML = parsedAssignments.map((a, i) => `
-      <tr>
-        <td><input type="checkbox" class="preview-check" data-idx="${i}" checked></td>
+    tbody.innerHTML = parsedAssignments.map((a, i) => {
+      const noDate = !a.due_date;
+      const dateCell = noDate
+        ? '<span style="color:var(--ink-low);font-size:10px;">No date — skip or add manually</span>'
+        : `<span class="mono" style="font-size:11.5px;">${esc(a.due_date)}</span>`;
+      return `
+      <tr${noDate ? ' style="opacity:0.55;"' : ''}>
+        <td><input type="checkbox" class="preview-check" data-idx="${i}"${noDate ? '' : ' checked'} ${noDate ? 'disabled title="No due date — cannot import"' : ''}></td>
         <td>${esc(a.title)}<br><span style="font-size:11px;color:var(--ink-low);font-family:'JetBrains Mono',monospace;">${esc(a.id)}</span></td>
         <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
-        <td class="mono" style="font-size:11.5px;">${a.due_date || '—'}</td>
-        <td class="mono" style="font-size:11.5px;">${a.weight_pct ? a.weight_pct + '%' : '—'}</td>
-      </tr>`).join('');
+        <td>${dateCell}</td>
+        <td class="mono" style="font-size:11.5px;">${a.weight_pct ? esc(String(a.weight_pct)) + '%' : '—'}</td>
+      </tr>`;
+    }).join('');
 
     // Select-all toggle
     document.getElementById('select-all').addEventListener('change', e => {
-      document.querySelectorAll('.preview-check').forEach(cb => { cb.checked = e.target.checked; });
+      document.querySelectorAll('.preview-check:not([disabled])').forEach(cb => { cb.checked = e.target.checked; });
+      updateImportButton();
     });
 
     updateImportButton();

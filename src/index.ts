@@ -53,17 +53,25 @@ Course: ${courseLabel}
 Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
 {
   "title": string,
-  "due_date": "YYYY-MM-DD" or null,
-  "deliverable_type": one of "Exam" | "Quiz" | "Lab Report" | "Problem Set" | "Essay" | "Paper" | "Project" | "Presentation" | "Reading" | "Other",
+  "due_date": "YYYY-MM-DD" or null if not specified,
+  "deliverable_type": one of "Exam" | "Essay" | "Project" | "Reading" | "Code" | "Presentation",
   "weight_pct": number (percentage of final grade, 0 if unspecified),
   "notes": string or null
 }
+
+Map assignment types as follows:
+- Quiz, midterm, final → "Exam"
+- Lab report, lab, problem set, homework, worksheet → "Code"
+- Paper, report, reflection → "Essay"
+- Group project, capstone, portfolio → "Project"
+- Required reading, textbook chapter → "Reading"
+- Presentation, demo, talk → "Presentation"
 
 Include: exams, quizzes, homework, problem sets, labs, essays, projects, presentations.
 Exclude: participation, attendance, office hours, ungraded readings.
 
 Syllabus:
-${syllabusText.slice(0, 8000)}`;
+${syllabusText.slice(0, 40000)}`;
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -446,11 +454,16 @@ export default {
           );
         }
 
-        // Determine next available assignment index for this course
-        const countRow = await env.DB.prepare(
-          "SELECT COUNT(*) AS n FROM assignments WHERE course_id = ?"
-        ).bind(courseId).first<{ n: number }>();
-        const nextIdx = (countRow?.n ?? 0) + 1;
+        // Determine next suffix by scanning existing IDs to avoid collisions
+        const idRows = await env.DB.prepare(
+          "SELECT id FROM assignments WHERE course_id = ?"
+        ).bind(courseId).all<{ id: string }>();
+        let maxSuffix = 0;
+        for (const row of idRows.results ?? []) {
+          const m = row.id.match(/-A(\d+)$/);
+          if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
+        }
+        const nextIdx = maxSuffix + 1;
 
         let parsed: ParsedAssignment[];
         try {
@@ -462,6 +475,7 @@ export default {
           );
         }
 
+        const VALID_TYPES = new Set(["Essay","Exam","Project","Reading","Code","Presentation"]);
         // Attach IDs and course/okr references (no DB write yet — preview only)
         const assignments = parsed.map((a, i) => ({
           id: `${courseId}-A${nextIdx + i}`,
@@ -469,7 +483,7 @@ export default {
           okr_id: course.okr_id,
           title: a.title,
           due_date: a.due_date ?? null,
-          deliverable_type: a.deliverable_type || "Other",
+          deliverable_type: VALID_TYPES.has(a.deliverable_type) ? a.deliverable_type : "Project",
           weight_pct: Number(a.weight_pct) || 0,
           notes: a.notes ?? null,
           status: "Not Started",

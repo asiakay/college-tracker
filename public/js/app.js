@@ -1,0 +1,584 @@
+// College Tracker — app.js
+// All REST calls go to the same Worker origin (no CORS needed in prod).
+// In local dev point BASE_URL at the wrangler dev server.
+
+const BASE = '';  // same origin
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+function getToken() {
+  try { return localStorage.getItem('ct_token') || ''; } catch { return ''; }
+}
+function setToken(t) {
+  try { localStorage.setItem('ct_token', t); } catch {}
+}
+
+// ── Fetch helpers ──────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...opts.headers };
+  const tok = getToken();
+  if (tok) headers['Authorization'] = `Bearer ${tok}`;
+  const res = await fetch(BASE + path, { ...opts, headers });
+  if (res.status === 401) {
+    setToken('');
+    showTokenPrompt();
+    throw new Error('Unauthorized');
+  }
+  return res.json();
+}
+
+function get(path) { return api(path); }
+function post(path, body) { return api(path, { method: 'POST', body: JSON.stringify(body) }); }
+function put(path, body) { return api(path, { method: 'PUT', body: JSON.stringify(body) }); }
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-area').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── Date helpers ───────────────────────────────────────────────────────────
+function today() { return new Date().toISOString().slice(0, 10); }
+
+function countdown(dateStr) {
+  const due = new Date(dateStr + 'T23:59:59');
+  const now = new Date();
+  const diff = Math.ceil((due - now) / 86400000);
+  if (diff < 0) return { label: `${-diff}d overdue`, cls: 'urgent' };
+  if (diff === 0) return { label: 'due today', cls: 'urgent' };
+  if (diff === 1) return { label: 'tomorrow', cls: 'soon' };
+  if (diff <= 7)  return { label: `in ${diff} days`, cls: 'soon' };
+  return { label: `in ${diff} days`, cls: '' };
+}
+
+function urgencyClass(dateStr) {
+  const { cls } = countdown(dateStr);
+  if (cls === 'urgent') return 'urgency-red';
+  if (cls === 'soon')   return 'urgency-amber';
+  return 'urgency-muted';
+}
+
+function fmt(dateStr) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  return `${m}/${d}/${y}`;
+}
+
+// ── Status chips ───────────────────────────────────────────────────────────
+const STATUS_CHIP = {
+  'Not Started': 'chip-not',
+  'In Progress': 'chip-prog',
+  'Submitted':   'chip-sub',
+  'Graded':      'chip-graded',
+};
+
+function statusChip(s) {
+  return `<span class="chip ${STATUS_CHIP[s] || 'chip-not'}">${s}</span>`;
+}
+
+// ── Tab routing ────────────────────────────────────────────────────────────
+const VIEWS = {
+  today:     { el: 'view-today',     load: loadToday },
+  deadlines: { el: 'view-deadlines', load: loadDeadlines },
+  courses:   { el: 'view-courses',   load: loadCourses },
+  progress:  { el: 'view-progress',  load: loadProgress },
+  history:   { el: 'view-history',   load: loadHistory },
+};
+
+let currentTab = 'today';
+
+function switchTab(name) {
+  if (!VIEWS[name]) return;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
+    b.setAttribute('aria-selected', b.dataset.tab === name ? 'true' : 'false');
+  });
+  Object.entries(VIEWS).forEach(([k, v]) => {
+    document.getElementById(v.el).classList.toggle('active', k === name);
+  });
+  const toggle = document.getElementById('log-toggle');
+  toggle.classList.toggle('visible', name === 'today' || name === 'progress');
+
+  currentTab = name;
+  VIEWS[name].load();
+}
+
+// ── TODAY ──────────────────────────────────────────────────────────────────
+async function loadToday() {
+  const [dl, tasks] = await Promise.all([
+    get('/api/deadlines?days=7').catch(() => ({ deadlines: [] })),
+    get(`/api/tasks?date=${today()}`).catch(() => ({ tasks: [] })),
+  ]);
+  renderTodayDeadlines(dl.deadlines || []);
+  renderTodayTasks(tasks.tasks || []);
+}
+
+function renderTodayDeadlines(items) {
+  const el = document.getElementById('today-deadlines');
+  if (!items.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div>Nothing due this week</div>`;
+    return;
+  }
+  el.innerHTML = items.slice(0, 6).map(a => {
+    const cd = countdown(a.due_date);
+    return `<div class="card">
+      <div class="asn-row">
+        <div class="asn-urgency ${urgencyClass(a.due_date)}"></div>
+        <div class="asn-body">
+          <div class="asn-title">${esc(a.title)}</div>
+          <div class="asn-meta">
+            <span class="chip chip-course">${esc(a.course_name)}</span>
+            <span class="asn-due ${cd.cls}">${cd.label}</span>
+            ${statusChip(a.status)}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTodayTasks(tasks) {
+  const el = document.getElementById('today-tasks');
+  if (!tasks.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📋</div>Nothing logged yet today<br>Use the Log task button below to start a session.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="card">${tasks.map(t => `
+    <div class="task-row">
+      <div class="task-time">${t.time_spent || '—'}</div>
+      <div class="task-body">
+        <div class="task-desc">${esc(t.description)}</div>
+        <div class="task-okr">${esc(t.key_result)}${t.assignment_id ? `<span class="task-asn"># ${esc(t.assignment_id)}</span>` : ''}</div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+// ── DEADLINES ─────────────────────────────────────────────────────────────
+let allDeadlines = [];
+
+async function loadDeadlines() {
+  const days = document.getElementById('dl-days-filter').value || 14;
+  const data = await get(`/api/deadlines?days=${days}`).catch(() => ({ deadlines: [] }));
+  allDeadlines = data.deadlines || [];
+  populateCourseFilter(allDeadlines);
+  renderDeadlines();
+}
+
+function populateCourseFilter(items) {
+  const sel = document.getElementById('dl-course-filter');
+  const current = sel.value;
+  const courses = [...new Set(items.map(i => i.course_name))].sort();
+  sel.innerHTML = `<option value="">All courses</option>` +
+    courses.map(c => `<option${c === current ? ' selected' : ''}>${esc(c)}</option>`).join('');
+}
+
+function renderDeadlines() {
+  const courseF = document.getElementById('dl-course-filter').value;
+  const statusF = document.getElementById('dl-status-filter').value;
+
+  const rows = allDeadlines.filter(a =>
+    (!courseF || a.course_name === courseF) &&
+    (!statusF || a.status === statusF)
+  );
+
+  const tbody = document.getElementById('deadlines-body');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No assignments match the current filters.</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(a => {
+    const cd = countdown(a.due_date);
+    const rowCls = cd.cls === 'urgent' ? 'row-red' : cd.cls === 'soon' ? 'row-amber' : '';
+    const id = `s-${a.id}`;
+    return `<tr class="${rowCls}" data-id="${esc(a.id)}">
+      <td>${esc(a.title)}</td>
+      <td><span class="chip chip-course">${esc(a.course_name)}</span></td>
+      <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
+      <td class="mono">${a.weight_pct ? a.weight_pct + '%' : '—'}</td>
+      <td class="mono asn-due ${cd.cls}" title="${esc(a.due_date)}">${fmt(a.due_date)} · ${cd.label}</td>
+      <td>
+        <div class="status-wrap" id="${id}">
+          <span class="status-chip chip ${STATUS_CHIP[a.status] || 'chip-not'}">${esc(a.status)}</span>
+          <select class="status-select" aria-label="Change status">
+            ${['Not Started','In Progress','Submitted','Graded'].map(s =>
+              `<option${s === a.status ? ' selected' : ''}>${s}</option>`).join('')}
+          </select>
+          <button class="status-save">Save</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Status chip → edit mode on click
+  tbody.querySelectorAll('.status-chip').forEach(chip => {
+    chip.style.cursor = 'pointer';
+    chip.addEventListener('click', () => {
+      chip.closest('.status-wrap').classList.toggle('status-editing');
+    });
+  });
+
+  // Save button
+  tbody.querySelectorAll('.status-save').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const wrap = btn.closest('.status-wrap');
+      const row = btn.closest('tr');
+      const id = row.dataset.id;
+      const sel = wrap.querySelector('.status-select');
+      const newStatus = sel.value;
+      try {
+        await put(`/api/assignments/${encodeURIComponent(id)}`, { status: newStatus });
+        toast('Status updated');
+        const a = allDeadlines.find(x => x.id === id);
+        if (a) a.status = newStatus;
+        renderDeadlines();
+      } catch (e) {
+        if (e.message !== 'Unauthorized') toast('Failed to update', 'fail');
+      }
+    });
+  });
+}
+
+// ── COURSES ────────────────────────────────────────────────────────────────
+let courseData = [];
+let asnData = [];
+let okrData = [];
+
+async function loadCourses() {
+  const [courses, asns, okrs] = await Promise.all([
+    get('/api/courses').catch(() => ({ courses: [] })),
+    get('/api/assignments').catch(() => ({ assignments: [] })),
+    get('/api/okrs').catch(() => ({ okrs: [] })),
+  ]);
+  courseData = courses.courses || [];
+  asnData = asns.assignments || [];
+  okrData = okrs.okrs || [];
+  renderCourses();
+}
+
+function renderCourses() {
+  const grid = document.getElementById('course-grid');
+  if (!courseData.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">📚</div>No courses found.<br>Seed courses via the D1 dashboard or MCP tool.</div>`;
+    return;
+  }
+  grid.innerHTML = courseData.map(course => {
+    const myAsns = asnData.filter(a => a.course_id === course.id);
+    const done = myAsns.filter(a => ['Submitted','Graded'].includes(a.status)).length;
+    const pct = myAsns.length ? Math.round((done / myAsns.length) * 100) : 0;
+    const okr = okrData.find(o => o.id === course.okr_id);
+
+    return `<div class="course-card" id="card-${esc(course.id)}">
+      <div class="course-name">${esc(course.name)}</div>
+      <div class="course-meta">${esc(course.term)} · <span class="mono">${esc(course.id)}</span>${course.instructor ? ` · ${esc(course.instructor)}` : ''}</div>
+      ${okr ? `<div style="font-size:11.5px;color:var(--ink-low);margin-bottom:8px;">OKR: ${esc(okr.objective)}</div>` : ''}
+      <div class="course-prog-label">
+        <span>Assignments</span>
+        <span>${done} / ${myAsns.length}</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="course-asn-list">
+        ${myAsns.length ? myAsns.map(a => `
+          <div class="course-asn-item">
+            ${statusChip(a.status)}
+            <span class="course-asn-title">${esc(a.title)}</span>
+            <span class="course-asn-due">${fmt(a.due_date)}</span>
+          </div>`).join('') : `<div style="font-size:12px;color:var(--ink-low);padding:6px 0;">No assignments yet.</div>`}
+      </div>
+      <button class="btn-add-asn" data-course="${esc(course.id)}" data-okr="${esc(course.okr_id)}">+ Add assignment</button>
+      <div class="add-asn-form" id="form-${esc(course.id)}">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">ID</label>
+            <input class="form-input asn-id" placeholder="e.g. SCI133-A1" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Title</label>
+            <input class="form-input asn-title" placeholder="Lab Report #1" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Due date</label>
+            <input class="form-input asn-due" type="date" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select class="form-select asn-type">
+              <option>Project</option><option>Essay</option><option>Exam</option>
+              <option>Reading</option><option>Code</option><option>Presentation</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Weight %</label>
+            <input class="form-input asn-weight" type="number" min="0" max="100" placeholder="20" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-save asn-save" data-course="${esc(course.id)}" data-okr="${esc(course.okr_id)}">Save</button>
+          <button class="btn-cancel asn-cancel" data-course="${esc(course.id)}">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Add assignment toggle
+  grid.querySelectorAll('.btn-add-asn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('form-' + btn.dataset.course).classList.add('open');
+    });
+  });
+
+  // Cancel
+  grid.querySelectorAll('.asn-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('form-' + btn.dataset.course).classList.remove('open');
+    });
+  });
+
+  // Save assignment
+  grid.querySelectorAll('.asn-save').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const form = document.getElementById('form-' + btn.dataset.course);
+      const id     = form.querySelector('.asn-id').value.trim();
+      const title  = form.querySelector('.asn-title').value.trim();
+      const due    = form.querySelector('.asn-due').value;
+      const type   = form.querySelector('.asn-type').value;
+      const weight = parseFloat(form.querySelector('.asn-weight').value) || 0;
+      if (!id || !title || !due) { toast('ID, title, and due date are required', 'fail'); return; }
+      try {
+        const res = await post('/api/assignments', {
+          id, course_id: btn.dataset.course, okr_id: btn.dataset.okr,
+          title, due_date: due, deliverable_type: type, weight_pct: weight,
+        });
+        if (res.error) { toast(res.error, 'fail'); return; }
+        toast('Assignment added');
+        form.classList.remove('open');
+        const { assignments } = await get('/api/assignments').catch(() => ({ assignments: asnData }));
+        asnData = assignments || asnData;
+        renderCourses();
+      } catch (e) {
+        if (e.message !== 'Unauthorized') toast('Failed to save', 'fail');
+      }
+    });
+  });
+}
+
+// ── OKR PROGRESS ──────────────────────────────────────────────────────────
+async function loadProgress() {
+  const data = await get('/api/progress').catch(() => ({ progress: [] }));
+  renderProgress(data.progress || []);
+}
+
+function renderProgress(rows) {
+  const el = document.getElementById('progress-list');
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🎯</div>No OKRs found.</div>`;
+    return;
+  }
+  el.innerHTML = rows.map(r => {
+    const pct = r.task_progress_pct || 0;
+    const asnFrac = r.total_assignments
+      ? `${r.completed_assignments || 0}/${r.total_assignments}`
+      : '—';
+    const taskFrac = r.total_micro_tasks
+      ? `${r.completed_micro_tasks || 0}/${r.total_micro_tasks}`
+      : '—';
+    return `<div class="okr-row">
+      <div class="okr-row-header">
+        <div>
+          <div class="okr-objective">${esc(r.objective)}</div>
+          <div class="okr-kr">${esc(r.key_result)}</div>
+        </div>
+        <button class="btn-log" data-okr="${esc(r.okr_id)}">Log task</button>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="okr-stats">
+        <span><strong>${pct}%</strong> task completion</span>
+        <span>Assignments: <strong>${asnFrac}</strong></span>
+        <span>Tasks: <strong>${taskFrac}</strong></span>
+        ${r.target_date ? `<span>Target: <strong class="mono">${fmt(r.target_date)}</strong></span>` : ''}
+        ${r.milestone_status ? statusChip(r.milestone_status) : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.btn-log').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const okrSel = document.getElementById('log-okr');
+      if (okrSel) { okrSel.value = btn.dataset.okr; }
+      openLogDrawer();
+    });
+  });
+}
+
+// ── HISTORY ────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const input = document.getElementById('history-date');
+  if (!input.value) input.value = today();
+  const data = await get(`/api/tasks?date=${input.value}&limit=100`).catch(() => ({ tasks: [] }));
+  renderHistory(data.tasks || [], input.value);
+}
+
+function renderHistory(tasks, date) {
+  const el = document.getElementById('history-list');
+  if (!tasks.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📅</div>Nothing logged on ${fmt(date)}.</div>`;
+    return;
+  }
+  // Group by OKR
+  const byOkr = {};
+  tasks.forEach(t => {
+    const key = t.okr_id;
+    if (!byOkr[key]) byOkr[key] = { label: t.key_result || t.okr_id, tasks: [] };
+    byOkr[key].tasks.push(t);
+  });
+  el.innerHTML = Object.entries(byOkr).map(([okrId, group]) => `
+    <div class="okr-row">
+      <div style="font-size:12px;color:var(--ink-low);margin-bottom:8px;font-family:'JetBrains Mono',monospace;">${esc(okrId)}</div>
+      <div class="okr-kr" style="margin-bottom:10px;">${esc(group.label)}</div>
+      ${group.tasks.map(t => `
+        <div class="task-row">
+          <div class="task-time">${t.time_spent || '—'}</div>
+          <div class="task-body">
+            <div class="task-desc">${esc(t.description)}</div>
+            ${t.assignment_id ? `<div class="task-okr"><span class="task-asn"># ${esc(t.assignment_id)}</span></div>` : ''}
+          </div>
+          <span class="chip ${t.status === 'Done' ? 'chip-graded' : 'chip-prog'}">${esc(t.status || 'Done')}</span>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+// ── LOG DRAWER ─────────────────────────────────────────────────────────────
+let logDrawerOpen = false;
+let okrCache = [];
+let asnCache = [];
+
+function openLogDrawer() {
+  logDrawerOpen = true;
+  document.getElementById('log-drawer').classList.add('open');
+  checkTokenPrompt();
+}
+
+function closeLogDrawer() {
+  logDrawerOpen = false;
+  document.getElementById('log-drawer').classList.remove('open');
+}
+
+function checkTokenPrompt() {
+  const prompt = document.getElementById('token-prompt');
+  if (!getToken()) prompt.classList.add('visible');
+  else prompt.classList.remove('visible');
+}
+
+function showTokenPrompt() {
+  document.getElementById('token-prompt').classList.add('visible');
+  openLogDrawer();
+}
+
+async function populateLogSelects() {
+  if (!okrCache.length) {
+    const data = await get('/api/okrs').catch(() => ({ okrs: [] }));
+    okrCache = data.okrs || [];
+  }
+  const okrSel = document.getElementById('log-okr');
+  const current = okrSel.value;
+  okrSel.innerHTML = `<option value="">Select OKR…</option>` +
+    okrCache.map(o => `<option value="${esc(o.id)}"${o.id === current ? ' selected' : ''}>${esc(o.id)} — ${esc(o.objective)}</option>`).join('');
+
+  // Populate assignment select based on chosen OKR
+  await refreshAsnSelect(current);
+}
+
+async function refreshAsnSelect(okrId) {
+  if (!asnCache.length) {
+    const data = await get('/api/assignments').catch(() => ({ assignments: [] }));
+    asnCache = data.assignments || [];
+  }
+  const asnSel = document.getElementById('log-asn');
+  const filtered = okrId ? asnCache.filter(a => a.okr_id === okrId) : asnCache;
+  asnSel.innerHTML = `<option value="">None</option>` +
+    filtered.map(a => `<option value="${esc(a.id)}">${esc(a.title)} (${esc(a.course_name)})</option>`).join('');
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  // Log drawer toggle
+  document.getElementById('log-toggle').addEventListener('click', openLogDrawer);
+  document.getElementById('log-close').addEventListener('click', closeLogDrawer);
+
+  // Token save
+  document.getElementById('token-save').addEventListener('click', () => {
+    const v = document.getElementById('token-input').value.trim();
+    if (v) {
+      setToken(v);
+      document.getElementById('token-prompt').classList.remove('visible');
+      document.getElementById('token-input').value = '';
+      toast('Token saved');
+    }
+  });
+
+  // OKR select → refresh assignments
+  document.getElementById('log-okr').addEventListener('change', e => {
+    refreshAsnSelect(e.target.value);
+  });
+
+  // Populate selects when drawer opens
+  document.getElementById('log-toggle').addEventListener('click', populateLogSelects);
+
+  // Log submit
+  document.getElementById('log-submit').addEventListener('click', async () => {
+    const okr_id     = document.getElementById('log-okr').value;
+    const description = document.getElementById('log-desc').value.trim();
+    const time_spent  = document.getElementById('log-time').value.trim() || null;
+    const assignment_id = document.getElementById('log-asn').value || null;
+    const notes       = document.getElementById('log-notes').value.trim() || null;
+
+    if (!okr_id)      { toast('Select an OKR', 'fail'); return; }
+    if (!description) { toast('Description is required', 'fail'); return; }
+
+    try {
+      const res = await post('/api/tasks', {
+        okr_id, description, time_spent, assignment_id, notes,
+        source_repo: 'college-tracker', status: 'Done',
+      });
+      if (res.error) { toast(res.error, 'fail'); return; }
+      toast('Session logged ✓');
+      // Clear form
+      document.getElementById('log-desc').value = '';
+      document.getElementById('log-time').value = '';
+      document.getElementById('log-notes').value = '';
+      document.getElementById('log-asn').value = '';
+      asnCache = [];
+      // Refresh active view if it shows today's tasks
+      if (currentTab === 'today') loadToday();
+      if (currentTab === 'progress') loadProgress();
+      if (currentTab === 'history') loadHistory();
+    } catch (e) {
+      if (e.message !== 'Unauthorized') toast('Failed to log task', 'fail');
+    }
+  });
+
+  // Deadlines filters
+  document.getElementById('dl-course-filter').addEventListener('change', renderDeadlines);
+  document.getElementById('dl-status-filter').addEventListener('change', renderDeadlines);
+  document.getElementById('dl-days-filter').addEventListener('change', loadDeadlines);
+
+  // History datepicker
+  document.getElementById('history-date').addEventListener('change', loadHistory);
+  document.getElementById('history-date').value = today();
+
+  // Initial load
+  switchTab('today');
+});
+
+// ── Escape helper ──────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}

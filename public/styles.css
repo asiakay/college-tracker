@@ -180,6 +180,7 @@ body {
   color: var(--ink-low);
   margin-bottom: 12px;
 }
+.section-overdue { color: var(--red) !important; }
 
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 .card {

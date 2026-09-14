@@ -117,11 +117,15 @@ async function loadToday() {
 
 function renderTodayDeadlines(items) {
   const el = document.getElementById('today-deadlines');
-  if (!items.length) {
+  const overdue  = items.filter(a => countdown(a.due_date).label.includes('overdue'));
+  const upcoming = items.filter(a => !countdown(a.due_date).label.includes('overdue'));
+
+  if (!overdue.length && !upcoming.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div>Nothing due this week</div>`;
     return;
   }
-  el.innerHTML = items.slice(0, 6).map(a => {
+
+  const card = a => {
     const cd = countdown(a.due_date);
     return `<div class="card">
       <div class="asn-row">
@@ -136,7 +140,18 @@ function renderTodayDeadlines(items) {
         </div>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  let html = '';
+  if (overdue.length) {
+    html += `<div class="today-col-title section-overdue">⚠ Past due (${overdue.length})</div>`;
+    html += overdue.map(card).join('');
+  }
+  if (upcoming.length) {
+    if (overdue.length) html += `<div class="today-col-title" style="margin-top:16px">Due this week</div>`;
+    html += upcoming.slice(0, 6).map(card).join('');
+  }
+  el.innerHTML = html;
 }
 
 function renderTodayTasks(tasks) {

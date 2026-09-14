@@ -292,8 +292,8 @@ export default {
          FROM assignments a
          JOIN courses c ON c.id = a.course_id
          JOIN okrs o ON o.id = a.okr_id
-         WHERE a.due_date BETWEEN DATE('now') AND DATE('now', '+' || ? || ' days')
-           AND a.status != 'Graded'
+         WHERE a.due_date <= DATE('now', '+' || ? || ' days')
+           AND a.status NOT IN ('Submitted', 'Graded')
          ORDER BY a.due_date ASC`
       ).bind(days).all();
       return new Response(JSON.stringify({ deadlines: results, days_ahead: days }), { headers: CORS });
@@ -443,6 +443,28 @@ export default {
       return new Response(JSON.stringify({ course, assignments, count: assignments.length }), { headers: CORS });
     }
 
+    // ── POST /api/assignments (public — no write token required) ──────────────
+    if (url.pathname === "/api/assignments" && request.method === "POST") {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+      const invalid422 = (msg: string) =>
+        new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
+      const { id, course_id, okr_id, title, due_date,
+              deliverable_type = "Project", weight_pct = 0, notes = null } = body as Record<string, unknown>;
+      if (!id || !course_id || !okr_id || !title)
+        return invalid422("id, course_id, okr_id, and title are required");
+      const asnCourse = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(course_id).first();
+      if (!asnCourse) return invalid422(`Course '${course_id}' not found`);
+      const asnOkr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
+      if (!asnOkr) return invalid422(`OKR '${okr_id}' not found`);
+      const row = await env.DB.prepare(
+        `INSERT OR IGNORE INTO assignments (id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes)
+         VALUES (?,?,?,?,?,?,?,?) RETURNING *`
+      ).bind(id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes).first();
+      return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
+    }
+
     // ── REST: write routes (bearer-token protected) ───────────────────────────
 
     const isWrite = ["POST", "PUT", "PATCH"].includes(request.method);
@@ -479,23 +501,6 @@ export default {
           `INSERT INTO courses (id, name, term, okr_id, instructor) VALUES (?,?,?,?,?) RETURNING *`
         ).bind(id, name, term, okr_id, instructor).first();
         return new Response(JSON.stringify({ course: row }), { headers: CORS });
-      }
-
-      // POST /api/assignments
-      if (url.pathname === "/api/assignments" && request.method === "POST") {
-        const { id, course_id, okr_id, title, due_date,
-                deliverable_type = "Project", weight_pct = 0, notes = null } = body as Record<string, unknown>;
-        if (!id || !course_id || !okr_id || !title)
-          return invalid("id, course_id, okr_id, and title are required");
-        const course = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(course_id).first();
-        if (!course) return invalid(`Course '${course_id}' not found`);
-        const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
-        if (!okr) return invalid(`OKR '${okr_id}' not found`);
-        const row = await env.DB.prepare(
-          `INSERT OR IGNORE INTO assignments (id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes)
-           VALUES (?,?,?,?,?,?,?,?) RETURNING *`
-        ).bind(id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes).first();
-        return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
       }
 
       // PUT /api/assignments/:id

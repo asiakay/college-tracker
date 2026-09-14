@@ -162,9 +162,9 @@
 
         <label class="upload-zone" id="upload-zone" for="syllabus-file">
           <span class="upload-icon">📄</span>
-          <span class="upload-label" id="upload-label">Click to upload PDF</span>
+          <span class="upload-label" id="upload-label">Click to upload PDF or DOCX</span>
           <span class="upload-sub">or drag and drop</span>
-          <input type="file" id="syllabus-file" accept=".pdf" hidden />
+          <input type="file" id="syllabus-file" accept=".pdf,.docx,.doc" hidden />
         </label>
 
         <div class="modal-or"><span>or paste text</span></div>
@@ -206,6 +206,7 @@
     </div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
   <script src="js/app.js" type="module"></script>
 </body>
 </html>

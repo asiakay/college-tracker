@@ -518,7 +518,7 @@ function openSyllabusModal(courseId, courseName) {
   document.getElementById('modal-title').textContent = `Import syllabus — ${courseName}`;
   document.getElementById('syllabus-text').value = '';
   document.getElementById('syllabus-file').value = '';
-  setUploadZoneState('idle', 'Click to upload PDF');
+  setUploadZoneState('idle', 'Click to upload PDF or DOCX');
   showModalStep(1);
   document.getElementById('syllabus-backdrop').removeAttribute('hidden');
 }
@@ -557,23 +557,39 @@ function initUploadZone() {
     e.preventDefault();
     zone.classList.remove('drag-over');
     const file = e.dataTransfer?.files[0];
-    if (file?.type === 'application/pdf') loadPdfFile(file);
-    else toast('Please drop a PDF file', 'fail');
+    const ok = file && (file.type === 'application/pdf' || file.name.match(/\.docx?$/i));
+    if (ok) loadPdfFile(file);
+    else toast('Please drop a PDF or DOCX file', 'fail');
   });
 }
 
 function loadPdfFile(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    // result is "data:application/pdf;base64,..." — strip the prefix
-    const b64 = reader.result.split(',')[1];
-    selectedPdfBase64 = b64;
-    setUploadZoneState('done', `📄 ${file.name}`);
-    // Clear textarea so only the file is sent
-    document.getElementById('syllabus-text').value = '';
-  };
-  reader.onerror = () => toast('Could not read file', 'fail');
-  reader.readAsDataURL(file);
+  const isDocx = file.name.match(/\.docx?$/i);
+  if (isDocx) {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const result = await window.mammoth.extractRawText({ arrayBuffer: reader.result });
+        selectedPdfBase64 = null;
+        document.getElementById('syllabus-text').value = result.value;
+        setUploadZoneState('done', `📄 ${file.name}`);
+      } catch {
+        toast('Could not read DOCX file', 'fail');
+      }
+    };
+    reader.onerror = () => toast('Could not read file', 'fail');
+    reader.readAsArrayBuffer(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result.split(',')[1];
+      selectedPdfBase64 = b64;
+      setUploadZoneState('done', `📄 ${file.name}`);
+      document.getElementById('syllabus-text').value = '';
+    };
+    reader.onerror = () => toast('Could not read file', 'fail');
+    reader.readAsDataURL(file);
+  }
 }
 
 async function parseSyllabus() {

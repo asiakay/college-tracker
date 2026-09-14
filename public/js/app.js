@@ -510,11 +510,15 @@ async function refreshAsnSelect(okrId) {
 // ── SYLLABUS IMPORT MODAL ──────────────────────────────────────────────────
 let syllabusTargetCourse = null;
 let parsedAssignments = [];
+let selectedPdfBase64 = null;   // set when a PDF is chosen via the upload zone
 
 function openSyllabusModal(courseId, courseName) {
   syllabusTargetCourse = courseId;
+  selectedPdfBase64 = null;
   document.getElementById('modal-title').textContent = `Import syllabus — ${courseName}`;
   document.getElementById('syllabus-text').value = '';
+  document.getElementById('syllabus-file').value = '';
+  setUploadZoneState('idle', 'Click to upload PDF');
   showModalStep(1);
   document.getElementById('syllabus-backdrop').hidden = false;
 }
@@ -523,6 +527,7 @@ function closeSyllabusModal() {
   document.getElementById('syllabus-backdrop').hidden = true;
   syllabusTargetCourse = null;
   parsedAssignments = [];
+  selectedPdfBase64 = null;
 }
 
 function showModalStep(step) {
@@ -531,16 +536,66 @@ function showModalStep(step) {
   document.getElementById('modal-loading').hidden = step !== 'loading';
 }
 
+function setUploadZoneState(state, label) {
+  const zone = document.getElementById('upload-zone');
+  zone.classList.toggle('has-file', state === 'done');
+  document.getElementById('upload-label').textContent = label;
+}
+
+function initUploadZone() {
+  const zone  = document.getElementById('upload-zone');
+  const input = document.getElementById('syllabus-file');
+
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (file) loadPdfFile(file);
+  });
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file?.type === 'application/pdf') loadPdfFile(file);
+    else toast('Please drop a PDF file', 'fail');
+  });
+}
+
+function loadPdfFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    // result is "data:application/pdf;base64,..." — strip the prefix
+    const b64 = reader.result.split(',')[1];
+    selectedPdfBase64 = b64;
+    setUploadZoneState('done', `📄 ${file.name}`);
+    // Clear textarea so only the file is sent
+    document.getElementById('syllabus-text').value = '';
+  };
+  reader.onerror = () => toast('Could not read file', 'fail');
+  reader.readAsDataURL(file);
+}
+
 async function parseSyllabus() {
-  const text = document.getElementById('syllabus-text').value.trim();
-  if (text.length < 20) { toast('Paste some syllabus text first', 'fail'); return; }
   if (!getToken()) { showTokenPrompt(); closeSyllabusModal(); return; }
-  if (text.length > 40000) toast('Syllabus is long — only the first ~40,000 characters will be parsed', 'fail');
+
+  const text = document.getElementById('syllabus-text').value.trim();
+  const hasPdf = !!selectedPdfBase64;
+
+  if (!hasPdf && text.length < 20) {
+    toast('Upload a PDF or paste some syllabus text first', 'fail');
+    return;
+  }
+  if (!hasPdf && text.length > 40000) toast('Syllabus is long — only the first ~40,000 characters will be parsed', 'fail');
 
   showModalStep('loading');
 
+  const payload = hasPdf
+    ? { file_base64: selectedPdfBase64, file_type: 'application/pdf' }
+    : { text };
+
   try {
-    const res = await post(`/api/courses/${encodeURIComponent(syllabusTargetCourse)}/parse-syllabus`, { text });
+    const res = await post(`/api/courses/${encodeURIComponent(syllabusTargetCourse)}/parse-syllabus`, payload);
     if (res.error) { toast(res.error, 'fail'); showModalStep(1); return; }
 
     parsedAssignments = res.assignments || [];
@@ -692,6 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Syllabus modal
+  initUploadZone();
   document.getElementById('modal-close').addEventListener('click', closeSyllabusModal);
   document.getElementById('modal-parse').addEventListener('click', parseSyllabus);
   document.getElementById('modal-import').addEventListener('click', confirmImport);

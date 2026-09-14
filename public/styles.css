@@ -846,6 +846,39 @@ tr.row-amber td:first-child { border-left: 3px solid var(--amber); padding-left:
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 20px 16px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+.upload-zone:hover,
+.upload-zone.drag-over { border-color: var(--purple); background: color-mix(in srgb, var(--purple) 6%, transparent); }
+.upload-zone.has-file  { border-color: var(--green);  background: color-mix(in srgb, var(--green)  6%, transparent); }
+.upload-icon { font-size: 28px; line-height: 1; }
+.upload-label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.upload-sub   { font-size: 11px; color: var(--ink-low); }
+
+.modal-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 8px;
+  color: var(--ink-low);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.modal-or::before,
+.modal-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
 .btn-import-syllabus {
   width: 100%;
   margin-top: 8px;

@@ -373,11 +373,80 @@ export default {
       return new Response(JSON.stringify({ date, tasks: results }), { headers: CORS });
     }
 
+    // ── parse-syllabus (public POST — no auth required) ──────────────────────
+
+    const parseSylMatch = url.pathname.match(/^\/api\/courses\/([^/]+)\/parse-syllabus$/);
+    if (parseSylMatch && request.method === "POST") {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+
+      const invalid = (msg: string) =>
+        new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
+
+      const courseId = parseSylMatch[1];
+      const course = await env.DB.prepare(
+        "SELECT id, name, okr_id FROM courses WHERE id = ?"
+      ).bind(courseId).first<{ id: string; name: string; okr_id: string }>();
+      if (!course) return new Response(JSON.stringify({ error: "Course not found" }), { status: 404, headers: CORS });
+
+      const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
+      const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
+      const hasText = text && typeof text === "string" && text.trim().length >= 20;
+      if (!hasFile && !hasText)
+        return invalid("Provide either a base64-encoded PDF (file_base64) or at least 20 characters of syllabus text");
+
+      if (!env.ANTHROPIC_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: "ANTHROPIC_API_KEY not configured — add it in the Cloudflare dashboard" }),
+          { status: 503, headers: CORS }
+        );
+      }
+
+      const idRows = await env.DB.prepare(
+        "SELECT id FROM assignments WHERE course_id = ?"
+      ).bind(courseId).all<{ id: string }>();
+      let maxSuffix = 0;
+      for (const row of idRows.results ?? []) {
+        const m = row.id.match(/-A(\d+)$/);
+        if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
+      }
+      const nextIdx = maxSuffix + 1;
+
+      const syllabusInput: SyllabusInput = hasFile
+        ? { file_base64: file_base64!, file_type: file_type || "application/pdf" }
+        : { text: text! };
+
+      let parsed: ParsedAssignment[];
+      try {
+        parsed = await callClaude(env.ANTHROPIC_API_KEY, `${course.name} (${course.id})`, syllabusInput);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Parse failed: ${e instanceof Error ? e.message : String(e)}` }),
+          { status: 502, headers: CORS }
+        );
+      }
+
+      const VALID_TYPES = new Set(["Essay","Exam","Project","Reading","Code","Presentation"]);
+      const assignments = parsed.map((a, i) => ({
+        id: `${courseId}-A${nextIdx + i}`,
+        course_id: courseId,
+        okr_id: course.okr_id,
+        title: a.title,
+        due_date: a.due_date ?? null,
+        deliverable_type: VALID_TYPES.has(a.deliverable_type) ? a.deliverable_type : "Project",
+        weight_pct: Number(a.weight_pct) || 0,
+        notes: a.notes ?? null,
+        status: "Not Started",
+      }));
+
+      return new Response(JSON.stringify({ course, assignments, count: assignments.length }), { headers: CORS });
+    }
+
     // ── REST: write routes (bearer-token protected) ───────────────────────────
 
     const isWrite = ["POST", "PUT", "PATCH"].includes(request.method);
-    const isPublicWrite = url.pathname === "/api/health" || url.pathname.endsWith("/parse-syllabus");
-    if (isWrite && url.pathname.startsWith("/api/") && !isPublicWrite) {
+    if (isWrite && url.pathname.startsWith("/api/")) {
       if (env.MCP_SECRET_TOKEN) {
         const auth = request.headers.get("Authorization") ?? "";
         if (auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
@@ -426,7 +495,6 @@ export default {
           `INSERT OR IGNORE INTO assignments (id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes)
            VALUES (?,?,?,?,?,?,?,?) RETURNING *`
         ).bind(id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes).first();
-        // row is null when the id already existed (IGNORE) — treat as success
         return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
       }
 
@@ -446,70 +514,6 @@ export default {
         ).bind(...vals, asnId).first();
         if (!row) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
         return new Response(JSON.stringify({ assignment: row }), { headers: CORS });
-      }
-
-      // POST /api/courses/:id/parse-syllabus — call Claude, return preview (no DB write)
-      const parseSylMatch = url.pathname.match(/^\/api\/courses\/([^/]+)\/parse-syllabus$/);
-      if (parseSylMatch && request.method === "POST") {
-        const courseId = parseSylMatch[1];
-        const course = await env.DB.prepare(
-          "SELECT id, name, okr_id FROM courses WHERE id = ?"
-        ).bind(courseId).first<{ id: string; name: string; okr_id: string }>();
-        if (!course) return new Response(JSON.stringify({ error: "Course not found" }), { status: 404, headers: CORS });
-
-        const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
-        const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
-        const hasText = text && typeof text === "string" && text.trim().length >= 20;
-        if (!hasFile && !hasText)
-          return invalid("Provide either a base64-encoded PDF (file_base64) or at least 20 characters of syllabus text");
-
-        if (!env.ANTHROPIC_API_KEY) {
-          return new Response(
-            JSON.stringify({ error: "ANTHROPIC_API_KEY not configured — add it in the Cloudflare dashboard" }),
-            { status: 503, headers: CORS }
-          );
-        }
-
-        // Determine next suffix by scanning existing IDs to avoid collisions
-        const idRows = await env.DB.prepare(
-          "SELECT id FROM assignments WHERE course_id = ?"
-        ).bind(courseId).all<{ id: string }>();
-        let maxSuffix = 0;
-        for (const row of idRows.results ?? []) {
-          const m = row.id.match(/-A(\d+)$/);
-          if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
-        }
-        const nextIdx = maxSuffix + 1;
-
-        const syllabusInput: SyllabusInput = hasFile
-          ? { file_base64: file_base64!, file_type: file_type || "application/pdf" }
-          : { text: text! };
-
-        let parsed: ParsedAssignment[];
-        try {
-          parsed = await callClaude(env.ANTHROPIC_API_KEY, `${course.name} (${course.id})`, syllabusInput);
-        } catch (e) {
-          return new Response(
-            JSON.stringify({ error: `Parse failed: ${e instanceof Error ? e.message : String(e)}` }),
-            { status: 502, headers: CORS }
-          );
-        }
-
-        const VALID_TYPES = new Set(["Essay","Exam","Project","Reading","Code","Presentation"]);
-        // Attach IDs and course/okr references (no DB write yet — preview only)
-        const assignments = parsed.map((a, i) => ({
-          id: `${courseId}-A${nextIdx + i}`,
-          course_id: courseId,
-          okr_id: course.okr_id,
-          title: a.title,
-          due_date: a.due_date ?? null,
-          deliverable_type: VALID_TYPES.has(a.deliverable_type) ? a.deliverable_type : "Project",
-          weight_pct: Number(a.weight_pct) || 0,
-          notes: a.notes ?? null,
-          status: "Not Started",
-        }));
-
-        return new Response(JSON.stringify({ course, assignments, count: assignments.length }), { headers: CORS });
       }
     }
 

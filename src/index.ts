@@ -45,8 +45,12 @@ interface ParsedAssignment {
   notes: string | null;
 }
 
-async function callClaude(apiKey: string, courseLabel: string, syllabusText: string): Promise<ParsedAssignment[]> {
-  const prompt = `You are extracting graded assignments from a course syllabus.
+type SyllabusInput =
+  | { text: string; file_base64?: never; file_type?: never }
+  | { file_base64: string; file_type: string; text?: never };
+
+async function callClaude(apiKey: string, courseLabel: string, input: SyllabusInput): Promise<ParsedAssignment[]> {
+  const instruction = `You are extracting graded assignments from a course syllabus.
 
 Course: ${courseLabel}
 
@@ -68,10 +72,17 @@ Map assignment types as follows:
 - Presentation, demo, talk → "Presentation"
 
 Include: exams, quizzes, homework, problem sets, labs, essays, projects, presentations.
-Exclude: participation, attendance, office hours, ungraded readings.
+Exclude: participation, attendance, office hours, ungraded readings.`;
 
-Syllabus:
-${syllabusText.slice(0, 40000)}`;
+  const userContent: unknown[] = input.file_base64
+    ? [
+        {
+          type: "document",
+          source: { type: "base64", media_type: input.file_type, data: input.file_base64 },
+        },
+        { type: "text", text: instruction },
+      ]
+    : [{ type: "text", text: `${instruction}\n\nSyllabus:\n${input.text.slice(0, 40000)}` }];
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -79,11 +90,12 @@ ${syllabusText.slice(0, 40000)}`;
       "Content-Type": "application/json",
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
+      "anthropic-beta": "pdfs-2024-09-25",
     },
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: userContent }],
     }),
   });
 
@@ -443,13 +455,15 @@ export default {
         ).bind(courseId).first<{ id: string; name: string; okr_id: string }>();
         if (!course) return new Response(JSON.stringify({ error: "Course not found" }), { status: 404, headers: CORS });
 
-        const { text } = body as { text?: string };
-        if (!text || typeof text !== "string" || text.trim().length < 20)
-          return invalid("text must be at least 20 characters");
+        const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
+        const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
+        const hasText = text && typeof text === "string" && text.trim().length >= 20;
+        if (!hasFile && !hasText)
+          return invalid("Provide either a base64-encoded PDF (file_base64) or at least 20 characters of syllabus text");
 
         if (!env.ANTHROPIC_API_KEY) {
           return new Response(
-            JSON.stringify({ error: "ANTHROPIC_API_KEY not configured — run: wrangler secret put ANTHROPIC_API_KEY" }),
+            JSON.stringify({ error: "ANTHROPIC_API_KEY not configured — add it in the Cloudflare dashboard" }),
             { status: 503, headers: CORS }
           );
         }
@@ -465,9 +479,13 @@ export default {
         }
         const nextIdx = maxSuffix + 1;
 
+        const syllabusInput: SyllabusInput = hasFile
+          ? { file_base64: file_base64!, file_type: file_type || "application/pdf" }
+          : { text: text! };
+
         let parsed: ParsedAssignment[];
         try {
-          parsed = await callClaude(env.ANTHROPIC_API_KEY, `${course.name} (${course.id})`, text);
+          parsed = await callClaude(env.ANTHROPIC_API_KEY, `${course.name} (${course.id})`, syllabusInput);
         } catch (e) {
           return new Response(
             JSON.stringify({ error: `Parse failed: ${e instanceof Error ? e.message : String(e)}` }),

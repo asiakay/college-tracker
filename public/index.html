@@ -158,8 +158,18 @@
       </div>
 
       <div id="modal-step1">
-        <p class="modal-hint">Paste your full syllabus below. Claude will extract all assignments, due dates, and weights — you can review before importing.</p>
-        <textarea class="modal-textarea" id="syllabus-text" placeholder="Paste syllabus text here…" rows="12"></textarea>
+        <p class="modal-hint">Upload a PDF or paste text. Claude will extract all assignments, due dates, and weights — you can review before importing.</p>
+
+        <label class="upload-zone" id="upload-zone" for="syllabus-file">
+          <span class="upload-icon">📄</span>
+          <span class="upload-label" id="upload-label">Click to upload PDF</span>
+          <span class="upload-sub">or drag and drop</span>
+          <input type="file" id="syllabus-file" accept=".pdf" hidden />
+        </label>
+
+        <div class="modal-or"><span>or paste text</span></div>
+
+        <textarea class="modal-textarea" id="syllabus-text" placeholder="Paste syllabus text here…" rows="7"></textarea>
         <div class="modal-actions">
           <button class="btn-save" id="modal-parse">Parse with Claude →</button>
         </div>

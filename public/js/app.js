@@ -569,12 +569,19 @@ function loadPdfFile(file) {
     const reader = new FileReader();
     reader.onload = async () => {
       try {
+        if (!window.mammoth) throw new Error('mammoth not loaded');
         const result = await window.mammoth.extractRawText({ arrayBuffer: reader.result });
+        if (!result.value || result.value.trim().length < 20) {
+          toast('Could not extract text from this file — try a PDF instead', 'fail');
+          return;
+        }
         selectedPdfBase64 = null;
         document.getElementById('syllabus-text').value = result.value;
         setUploadZoneState('done', `📄 ${file.name}`);
-      } catch {
-        toast('Could not read DOCX file', 'fail');
+        // Auto-parse once text is ready
+        parseSyllabus();
+      } catch (e) {
+        toast(`Could not read DOCX: ${e.message}`, 'fail');
       }
     };
     reader.onerror = () => toast('Could not read file', 'fail');
@@ -586,6 +593,8 @@ function loadPdfFile(file) {
       selectedPdfBase64 = b64;
       setUploadZoneState('done', `📄 ${file.name}`);
       document.getElementById('syllabus-text').value = '';
+      // Auto-parse once file is ready
+      parseSyllabus();
     };
     reader.onerror = () => toast('Could not read file', 'fail');
     reader.readAsDataURL(file);

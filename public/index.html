@@ -149,6 +149,53 @@
 
   <div class="toast-area" id="toast-area"></div>
 
+  <!-- SYLLABUS IMPORT MODAL -->
+  <div class="modal-backdrop" id="syllabus-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-header">
+        <span class="modal-title" id="modal-title">Import syllabus</span>
+        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+      </div>
+
+      <div id="modal-step1">
+        <p class="modal-hint">Paste your full syllabus below. Claude will extract all assignments, due dates, and weights — you can review before importing.</p>
+        <textarea class="modal-textarea" id="syllabus-text" placeholder="Paste syllabus text here…" rows="12"></textarea>
+        <div class="modal-actions">
+          <button class="btn-save" id="modal-parse">Parse with Claude →</button>
+        </div>
+      </div>
+
+      <div id="modal-step2" hidden>
+        <p class="modal-hint" id="modal-preview-hint"></p>
+        <div class="table-wrap modal-preview-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="select-all" checked aria-label="Select all"></th>
+                <th>Assignment</th>
+                <th>Type</th>
+                <th>Due</th>
+                <th>Weight</th>
+              </tr>
+            </thead>
+            <tbody id="preview-body"></tbody>
+          </table>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-save" id="modal-import">Import selected</button>
+          <button class="btn-cancel" id="modal-back">← Back</button>
+        </div>
+      </div>
+
+      <div id="modal-loading" hidden>
+        <div class="modal-spinner">
+          <div class="spinner"></div>
+          <span>Parsing with Claude…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/app.js" type="module"></script>
 </body>
 </html>

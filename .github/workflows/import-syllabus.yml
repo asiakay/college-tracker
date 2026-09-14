@@ -1,0 +1,185 @@
+name: Import Syllabus
+
+on:
+  workflow_dispatch:
+    inputs:
+      course_id:
+        description: "Course ID (e.g. SCI-133-F26)"
+        required: true
+      syllabus_path:
+        description: "Repo path to syllabus file (e.g. syllabi/sci133.txt)"
+        required: true
+      file_type:
+        description: "File type"
+        required: false
+        default: text
+        type: choice
+        options:
+          - text
+          - pdf
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse syllabus via Anthropic API
+        id: parse
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          COURSE_ID: ${{ inputs.course_id }}
+          FILE_PATH: ${{ inputs.syllabus_path }}
+          FILE_TYPE: ${{ inputs.file_type }}
+        run: |
+          # Get course name for the prompt
+          COURSE_RESP=$(curl -s "$WORKER_URL/api/courses")
+          COURSE_NAME=$(echo "$COURSE_RESP" | jq -r --arg id "$COURSE_ID" \
+            '.courses[] | select(.id == $id) | .name // empty' 2>/dev/null || echo "")
+          COURSE_LABEL="${COURSE_NAME:-$COURSE_ID} ($COURSE_ID)"
+          echo "Course: $COURSE_LABEL"
+
+          INSTRUCTION="You are extracting graded assignments from a course syllabus.
+
+Course: $COURSE_LABEL
+
+Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
+{
+  \"title\": string,
+  \"due_date\": \"YYYY-MM-DD\" or null if not specified,
+  \"deliverable_type\": one of \"Exam\" | \"Essay\" | \"Project\" | \"Reading\" | \"Code\" | \"Presentation\",
+  \"weight_pct\": number (percentage of final grade, 0 if unspecified),
+  \"notes\": string or null
+}
+
+Map assignment types:
+- Quiz, midterm, final → Exam
+- Lab, problem set, homework, worksheet → Code
+- Paper, report, reflection → Essay
+- Group project, capstone, portfolio → Project
+- Required reading, textbook chapter → Reading
+- Presentation, demo, talk → Presentation
+
+Include: exams, quizzes, homework, problem sets, labs, essays, projects, presentations.
+Exclude: participation, attendance, office hours, ungraded readings."
+
+          # Build request payload
+          if [ "$FILE_TYPE" = "pdf" ]; then
+            B64=$(base64 -w 0 "$FILE_PATH")
+            jq -n \
+              --arg key "$ANTHROPIC_API_KEY" \
+              --arg b64 "$B64" \
+              --arg instr "$INSTRUCTION" \
+              '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 4096,
+                messages: [{
+                  role: "user",
+                  content: [
+                    {type: "document", source: {type: "base64", media_type: "application/pdf", data: $b64}},
+                    {type: "text", text: $instr}
+                  ]
+                }]
+              }' > /tmp/payload.json
+          else
+            SYLLABUS=$(cat "$FILE_PATH")
+            jq -n \
+              --arg instr "$INSTRUCTION" \
+              --arg syllabus "$SYLLABUS" \
+              '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 4096,
+                messages: [{role: "user", content: ($instr + "\n\nSyllabus:\n" + $syllabus)}]
+              }' > /tmp/payload.json
+          fi
+
+          echo "Calling Anthropic API..."
+          RESP=$(curl -s -X POST "https://api.anthropic.com/v1/messages" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "anthropic-beta: pdfs-2024-09-25" \
+            --data @/tmp/payload.json)
+
+          if echo "$RESP" | jq -e '.error' > /dev/null 2>&1; then
+            echo "❌ Anthropic API error:"
+            echo "$RESP" | jq .
+            exit 1
+          fi
+
+          # Extract and clean the JSON array from the response
+          RAW=$(echo "$RESP" | jq -r '.content[0].text // empty')
+          CLEANED=$(echo "$RAW" | sed 's/^```[a-zA-Z]*//;s/```$//' | tr -d '\r')
+          echo "Parsed response:"
+          echo "$CLEANED" | jq .
+
+          COUNT=$(echo "$CLEANED" | jq 'length')
+          echo "Found $COUNT assignment(s)"
+
+          echo "assignments=$CLEANED" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Generate IDs and persist assignments
+        env:
+          WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          TOKEN: ${{ secrets.MCP_SECRET_TOKEN }}
+          COURSE_ID: ${{ inputs.course_id }}
+          ASSIGNMENTS: ${{ steps.parse.outputs.assignments }}
+        run: |
+          # Find next available assignment ID suffix
+          EXISTING=$(curl -s "$WORKER_URL/api/assignments?course_id=$COURSE_ID")
+          MAX_SUFFIX=$(echo "$EXISTING" | jq '
+            [.assignments[]?.id // empty
+              | capture("-A(?<n>[0-9]+)$")?.n // "0"
+              | tonumber] | max // 0')
+          echo "Max existing suffix: $MAX_SUFFIX"
+
+          # Get OKR ID for this course
+          COURSE_RESP=$(curl -s "$WORKER_URL/api/courses")
+          OKR_ID=$(echo "$COURSE_RESP" | jq -r --arg id "$COURSE_ID" \
+            '.courses[] | select(.id == $id) | .okr_id // "KR-ACAD-1"')
+          echo "OKR: $OKR_ID"
+
+          SAVED=0
+          SKIPPED=0
+          IDX=$((MAX_SUFFIX + 1))
+
+          while IFS= read -r assignment; do
+            TITLE=$(echo "$assignment" | jq -r '.title')
+            ASSGN_ID="${COURSE_ID}-A${IDX}"
+            echo "  → $ASSGN_ID: $TITLE"
+
+            PAYLOAD=$(echo "$assignment" | jq \
+              --arg id "$ASSGN_ID" \
+              --arg course_id "$COURSE_ID" \
+              --arg okr_id "$OKR_ID" \
+              '{
+                id: $id,
+                course_id: $course_id,
+                okr_id: $okr_id,
+                title: .title,
+                due_date: (.due_date // "2026-12-31"),
+                deliverable_type: (.deliverable_type // "Project"),
+                weight_pct: (.weight_pct // 0),
+                notes: (.notes // null)
+              }')
+
+            RESP=$(curl -s -X POST "$WORKER_URL/api/assignments" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $TOKEN" \
+              -d "$PAYLOAD")
+
+            if echo "$RESP" | jq -e '.assignment.id' > /dev/null 2>&1; then
+              SAVED=$((SAVED + 1))
+              echo "    ✅ saved"
+            else
+              SKIPPED=$((SKIPPED + 1))
+              echo "    ⏭  $(echo "$RESP" | jq -r '.assignment.skipped // .error // "unknown"')"
+            fi
+
+            IDX=$((IDX + 1))
+          done < <(echo "$ASSIGNMENTS" | jq -c '.[]')
+
+          echo ""
+          echo "Done — saved: $SAVED, skipped: $SKIPPED"

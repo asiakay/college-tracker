@@ -1,0 +1,82 @@
+name: Log Academic Task
+
+on:
+  workflow_dispatch:
+    inputs:
+      description:
+        description: "What was accomplished"
+        required: true
+      okr_id:
+        description: "OKR ID (e.g. KR-ACAD-1)"
+        required: true
+      assignment_id:
+        description: "Assignment ID to link (optional, e.g. SCI-133-F26-A1)"
+        required: false
+      time_spent:
+        description: "Time spent (e.g. 15m, 1h, 2.5h)"
+        required: false
+        default: "15m"
+      status:
+        description: "Task status"
+        required: false
+        default: Done
+        type: choice
+        options:
+          - Done
+          - In Progress
+          - To Do
+      notes:
+        description: "Optional notes"
+        required: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log task
+        env:
+          WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          TOKEN: ${{ secrets.MCP_SECRET_TOKEN }}
+          DESCRIPTION: ${{ inputs.description }}
+          OKR_ID: ${{ inputs.okr_id }}
+          ASSIGNMENT_ID: ${{ inputs.assignment_id }}
+          TIME_SPENT: ${{ inputs.time_spent }}
+          STATUS: ${{ inputs.status }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg desc  "$DESCRIPTION" \
+            --arg okr   "$OKR_ID" \
+            --arg asgn  "$ASSIGNMENT_ID" \
+            --arg time  "$TIME_SPENT" \
+            --arg st    "$STATUS" \
+            --arg notes "$NOTES" \
+            '{
+              description: $desc,
+              okr_id: $okr,
+              time_spent: $time,
+              status: $st,
+              source_repo: "college-tracker"
+            }
+            + (if $asgn  != "" then {assignment_id: $asgn}  else {} end)
+            + (if $notes != "" then {notes: $notes} else {} end)')
+
+          echo "=== Payload ==="
+          echo "$PAYLOAD" | jq .
+
+          RESP=$(curl -s -X POST \
+            "$WORKER_URL/api/tasks" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d "$PAYLOAD")
+
+          echo "=== Response ==="
+          echo "$RESP" | jq .
+
+          if echo "$RESP" | jq -e '.task.id' > /dev/null 2>&1; then
+            TASK_ID=$(echo "$RESP" | jq -r '.task.id')
+            echo "✅ Task logged — ID: $TASK_ID"
+          else
+            echo "❌ $(echo "$RESP" | jq -r '.error // "Unknown error"')"
+            exit 1
+          fi

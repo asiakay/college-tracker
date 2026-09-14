@@ -1,0 +1,91 @@
+name: Import Syllabus
+
+on:
+  workflow_dispatch:
+    inputs:
+      course_id:
+        description: "Course ID (e.g. SCI-133-F26)"
+        required: true
+      syllabus_path:
+        description: "Repo path to syllabus file (e.g. syllabi/sci133.txt)"
+        required: true
+      file_type:
+        description: "File type"
+        required: false
+        default: text
+        type: choice
+        options:
+          - text
+          - pdf
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse syllabus via Claude
+        id: parse
+        env:
+          WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          COURSE_ID: ${{ inputs.course_id }}
+          FILE_PATH: ${{ inputs.syllabus_path }}
+          FILE_TYPE: ${{ inputs.file_type }}
+        run: |
+          if [ "$FILE_TYPE" = "pdf" ]; then
+            B64=$(base64 -w 0 "$FILE_PATH")
+            PAYLOAD=$(jq -n --arg b "$B64" --arg t "application/pdf" \
+              '{"file_base64": $b, "file_type": $t}')
+          else
+            TEXT=$(cat "$FILE_PATH")
+            PAYLOAD=$(jq -n --arg t "$TEXT" '{"text": $t}')
+          fi
+
+          RESPONSE=$(curl -s -f -X POST \
+            "$WORKER_URL/api/courses/$COURSE_ID/parse-syllabus" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "=== Parse response ==="
+          echo "$RESPONSE" | jq .
+
+          COUNT=$(echo "$RESPONSE" | jq '.count // 0')
+          echo "Parsed $COUNT assignment(s)"
+
+          echo "assignments=$(echo "$RESPONSE" | jq -c '.assignments // []')" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Persist assignments
+        env:
+          WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          TOKEN: ${{ secrets.MCP_SECRET_TOKEN }}
+          ASSIGNMENTS: ${{ steps.parse.outputs.assignments }}
+        run: |
+          COUNT=$(echo "$ASSIGNMENTS" | jq 'length')
+          echo "Persisting $COUNT assignment(s)..."
+
+          SAVED=0
+          SKIPPED=0
+
+          while IFS= read -r assignment; do
+            ID=$(echo "$assignment" | jq -r '.id')
+            TITLE=$(echo "$assignment" | jq -r '.title')
+            echo "  → $ID: $TITLE"
+
+            RESP=$(curl -s -X POST \
+              "$WORKER_URL/api/assignments" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $TOKEN" \
+              -d "$assignment")
+
+            if echo "$RESP" | jq -e '.assignment.id' > /dev/null 2>&1; then
+              SAVED=$((SAVED + 1))
+              echo "    ✅ saved"
+            else
+              SKIPPED=$((SKIPPED + 1))
+              echo "    ⏭  skipped ($(echo "$RESP" | jq -r '.assignment.skipped // .error // "unknown"'))"
+            fi
+          done < <(echo "$ASSIGNMENTS" | jq -c '.[]')
+
+          echo ""
+          echo "Done — saved: $SAVED, skipped: $SKIPPED"

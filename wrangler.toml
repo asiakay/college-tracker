@@ -1,0 +1,8 @@
+name = "college-tracker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "repo-dashboard-work-items"
+database_id = "321045e5-1e2c-4a29-a837-f5e9ff1b6502"

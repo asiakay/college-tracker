@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
+[hidden] { display: none !important; }
+
 /* ── Tokens ───────────────────────────────────────────────────────────────── */
 :root {
   --bg:         #F6F8FA;

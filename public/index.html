@@ -4,9 +4,151 @@
   <meta charset="UTF-8" />
   <title>College Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <p>College Tracker — Phase 2 UI coming soon.</p>
-  <p><a href="/api/health">API health</a></p>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">College Tracker</span>
+      <span class="brand-term" id="brand-term">Fall 2026</span>
+    </div>
+    <nav class="tab-nav" role="tablist">
+      <button class="tab-btn active" data-tab="today"    role="tab" aria-selected="true">Today</button>
+      <button class="tab-btn"        data-tab="deadlines" role="tab" aria-selected="false">Deadlines</button>
+      <button class="tab-btn"        data-tab="courses"   role="tab" aria-selected="false">Courses</button>
+      <button class="tab-btn"        data-tab="progress"  role="tab" aria-selected="false">OKR Progress</button>
+      <button class="tab-btn"        data-tab="history"   role="tab" aria-selected="false">History</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- TODAY -->
+    <section id="view-today" class="view active">
+      <div class="today-grid">
+        <div>
+          <div class="today-col-title">Due this week</div>
+          <div id="today-deadlines"><div class="loading">Loading…</div></div>
+        </div>
+        <div>
+          <div class="today-col-title">Logged today</div>
+          <div id="today-tasks"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DEADLINES -->
+    <section id="view-deadlines" class="view">
+      <h2 class="view-title">Deadlines</h2>
+      <p class="view-sub">All upcoming assignments — click a status chip to update it inline.</p>
+      <div class="filters">
+        <select class="filter-select" id="dl-course-filter"><option value="">All courses</option></select>
+        <select class="filter-select" id="dl-status-filter">
+          <option value="">All statuses</option>
+          <option>Not Started</option>
+          <option>In Progress</option>
+          <option>Submitted</option>
+        </select>
+        <select class="filter-select" id="dl-days-filter">
+          <option value="14">Next 14 days</option>
+          <option value="30">Next 30 days</option>
+          <option value="60">Next 60 days</option>
+          <option value="90">Next 90 days</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Assignment</th>
+              <th>Course</th>
+              <th>Type</th>
+              <th>Weight</th>
+              <th>Due</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="deadlines-body"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- COURSES -->
+    <section id="view-courses" class="view">
+      <h2 class="view-title">Courses</h2>
+      <p class="view-sub">Assignment breakdown per course. Add assignments with the + button.</p>
+      <div id="course-grid" class="course-grid"><div class="loading">Loading…</div></div>
+    </section>
+
+    <!-- OKR PROGRESS -->
+    <section id="view-progress" class="view">
+      <h2 class="view-title">OKR Progress</h2>
+      <p class="view-sub">Key results linked to academic and project milestones. Click "Log task" to record a study session.</p>
+      <div id="progress-list"><div class="loading">Loading…</div></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="view-history" class="view">
+      <h2 class="view-title">History</h2>
+      <p class="view-sub">Daily task log. Navigate by date.</p>
+      <div class="date-picker-row">
+        <label class="date-label" for="history-date">Date</label>
+        <input type="date" class="date-input" id="history-date" />
+      </div>
+      <div id="history-list"><div class="loading">Loading…</div></div>
+    </section>
+  </main>
+
+  <!-- QUICK LOG DRAWER -->
+  <button class="log-drawer-toggle" id="log-toggle" aria-label="Log a task">
+    ✍️ Log task
+  </button>
+
+  <div class="log-drawer" id="log-drawer" aria-label="Log task form">
+    <div class="log-drawer-inner">
+      <div class="log-drawer-title">
+        Log a study session
+        <button class="log-drawer-close" id="log-close" aria-label="Close">×</button>
+      </div>
+
+      <div class="token-prompt" id="token-prompt">
+        ⚠️ Write token required to log tasks.
+        <input type="password" id="token-input" placeholder="Paste your write token" />
+        <button id="token-save">Save</button>
+      </div>
+
+      <div class="log-form-row">
+        <div class="form-group">
+          <label class="form-label" for="log-okr">OKR</label>
+          <select class="form-select" id="log-okr"><option value="">Select OKR…</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="log-desc">What you did</label>
+          <input class="form-input" type="text" id="log-desc" placeholder="e.g. Drafted lab report intro" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="log-time">Time</label>
+          <input class="form-input" type="text" id="log-time" placeholder="45m" />
+        </div>
+      </div>
+      <div class="log-form-row2">
+        <div class="form-group">
+          <label class="form-label" for="log-asn">Link to assignment (optional)</label>
+          <select class="form-select" id="log-asn"><option value="">None</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="log-notes">Notes (optional)</label>
+          <input class="form-input" type="text" id="log-notes" placeholder="Any notes…" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-save" id="log-submit">Save session</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-area" id="toast-area"></div>
+
+  <script src="js/app.js" type="module"></script>
 </body>
 </html>

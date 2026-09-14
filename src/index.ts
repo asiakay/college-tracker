@@ -197,6 +197,182 @@ export default {
       return new Response(JSON.stringify({ status: "ok", service: "college-tracker" }), { headers: CORS });
     }
 
+    // ── REST: read routes (open) ──────────────────────────────────────────────
+
+    if (url.pathname === "/api/okrs" && request.method === "GET") {
+      const category = url.searchParams.get("category");
+      const { results } = await env.DB.prepare(
+        `SELECT id, objective, key_result, sto_owner, target_date, status, category
+         FROM okrs` + (category ? ` WHERE category = ?` : ``) + ` ORDER BY id ASC`
+      ).bind(...(category ? [category] : [])).all();
+      return new Response(JSON.stringify({ okrs: results }), { headers: CORS });
+    }
+
+    if (url.pathname === "/api/deadlines" && request.method === "GET") {
+      const days = Math.min(Number(url.searchParams.get("days") ?? 14), 90);
+      const { results } = await env.DB.prepare(
+        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes,
+                a.course_id, a.okr_id,
+                c.name AS course_name, c.term,
+                o.objective, o.key_result
+         FROM assignments a
+         JOIN courses c ON c.id = a.course_id
+         JOIN okrs o ON o.id = a.okr_id
+         WHERE a.due_date BETWEEN DATE('now') AND DATE('now', '+' || ? || ' days')
+           AND a.status != 'Graded'
+         ORDER BY a.due_date ASC`
+      ).bind(days).all();
+      return new Response(JSON.stringify({ deadlines: results, days_ahead: days }), { headers: CORS });
+    }
+
+    if (url.pathname === "/api/progress" && request.method === "GET") {
+      const category = url.searchParams.get("category");
+      try {
+        const { results } = await env.DB.prepare(
+          `SELECT m.* FROM okr_progress_matrix m` +
+          (category ? ` JOIN okrs o ON o.id = m.okr_id WHERE o.category = ?` : ``) +
+          ` ORDER BY m.okr_id ASC`
+        ).bind(...(category ? [category] : [])).all();
+        return new Response(JSON.stringify({ progress: results }), { headers: CORS });
+      } catch {
+        const { results } = await env.DB.prepare(
+          `SELECT o.id AS okr_id, o.objective, o.key_result,
+                  COALESCE(o.sto_owner,'Self') AS sto_owner,
+                  o.target_date, o.status AS milestone_status,
+                  COUNT(DISTINCT a.id) AS total_assignments,
+                  SUM(CASE WHEN a.status IN ('Submitted','Graded') THEN 1 ELSE 0 END) AS completed_assignments,
+                  COUNT(DISTINCT t.id) AS total_micro_tasks,
+                  SUM(CASE WHEN t.status = 'Done' THEN 1 ELSE 0 END) AS completed_micro_tasks,
+                  ROUND(CASE WHEN COUNT(DISTINCT t.id) = 0 THEN 0.0
+                    ELSE (CAST(SUM(CASE WHEN t.status='Done' THEN 1 ELSE 0 END) AS FLOAT)/COUNT(DISTINCT t.id))*100.0
+                    END, 1) AS task_progress_pct
+           FROM okrs o
+           LEFT JOIN assignments a ON o.id = a.okr_id
+           LEFT JOIN tasks t ON o.id = t.okr_id` +
+          (category ? ` WHERE o.category = ?` : ``) +
+          ` GROUP BY o.id ORDER BY o.id ASC`
+        ).bind(...(category ? [category] : [])).all();
+        return new Response(JSON.stringify({ progress: results }), { headers: CORS });
+      }
+    }
+
+    if (url.pathname === "/api/courses" && request.method === "GET") {
+      const term = url.searchParams.get("term");
+      const { results } = await env.DB.prepare(
+        `SELECT id, name, instructor, term, okr_id, created_at FROM courses` +
+        (term ? ` WHERE term = ?` : ``) +
+        ` ORDER BY term DESC, name ASC`
+      ).bind(...(term ? [term] : [])).all();
+      return new Response(JSON.stringify({ courses: results }), { headers: CORS });
+    }
+
+    if (url.pathname === "/api/assignments" && request.method === "GET") {
+      const course_id = url.searchParams.get("course_id");
+      const status = url.searchParams.get("status");
+      const clauses: string[] = [];
+      const binds: string[] = [];
+      if (course_id) { clauses.push("a.course_id = ?"); binds.push(course_id); }
+      if (status)    { clauses.push("a.status = ?");    binds.push(status); }
+      const where = clauses.length ? " WHERE " + clauses.join(" AND ") : "";
+      const { results } = await env.DB.prepare(
+        `SELECT a.*, c.name AS course_name, c.term FROM assignments a
+         JOIN courses c ON c.id = a.course_id${where}
+         ORDER BY a.due_date ASC`
+      ).bind(...binds).all();
+      return new Response(JSON.stringify({ assignments: results }), { headers: CORS });
+    }
+
+    if (url.pathname === "/api/tasks" && request.method === "GET") {
+      const date = (url.searchParams.get("date") ?? new Date().toISOString().slice(0, 10));
+      const okr_id = url.searchParams.get("okr_id");
+      const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
+      const clauses = ["t.date = ?"];
+      const binds: unknown[] = [date];
+      if (okr_id) { clauses.push("t.okr_id = ?"); binds.push(okr_id); }
+      const { results } = await env.DB.prepare(
+        `SELECT t.id, t.date, t.description, t.okr_id, t.time_spent, t.status, t.notes,
+                t.source_repo, t.assignment_id, o.objective, o.key_result
+         FROM tasks t JOIN okrs o ON o.id = t.okr_id
+         WHERE ${clauses.join(" AND ")}
+         ORDER BY t.created_at DESC LIMIT ?`
+      ).bind(...binds, limit).all();
+      return new Response(JSON.stringify({ date, tasks: results }), { headers: CORS });
+    }
+
+    // ── REST: write routes (bearer-token protected) ───────────────────────────
+
+    const isWrite = ["POST", "PUT", "PATCH"].includes(request.method);
+    if (isWrite && (url.pathname.startsWith("/api/") && url.pathname !== "/api/health")) {
+      if (env.MCP_SECRET_TOKEN) {
+        const auth = request.headers.get("Authorization") ?? "";
+        if (auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
+          return err(null, -32000, "Unauthorized", 401);
+        }
+      }
+
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+
+      const invalid = (msg: string) =>
+        new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
+
+      // POST /api/tasks
+      if (url.pathname === "/api/tasks" && request.method === "POST") {
+        const result = await handleLogAcademicTask(env, body);
+        if ("error" in result) return invalid(result.error as string);
+        return new Response(JSON.stringify(result), { headers: CORS });
+      }
+
+      // POST /api/courses
+      if (url.pathname === "/api/courses" && request.method === "POST") {
+        const { id, name, term, okr_id, instructor = null } = body as Record<string, unknown>;
+        if (!id || !name || !term || !okr_id)
+          return invalid("id, name, term, and okr_id are required");
+        const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
+        if (!okr) return invalid(`OKR '${okr_id}' not found`);
+        const row = await env.DB.prepare(
+          `INSERT INTO courses (id, name, term, okr_id, instructor) VALUES (?,?,?,?,?) RETURNING *`
+        ).bind(id, name, term, okr_id, instructor).first();
+        return new Response(JSON.stringify({ course: row }), { headers: CORS });
+      }
+
+      // POST /api/assignments
+      if (url.pathname === "/api/assignments" && request.method === "POST") {
+        const { id, course_id, okr_id, title, due_date,
+                deliverable_type = "Project", weight_pct = 0, notes = null } = body as Record<string, unknown>;
+        if (!id || !course_id || !okr_id || !title || !due_date)
+          return invalid("id, course_id, okr_id, title, and due_date are required");
+        const course = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(course_id).first();
+        if (!course) return invalid(`Course '${course_id}' not found`);
+        const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
+        if (!okr) return invalid(`OKR '${okr_id}' not found`);
+        const row = await env.DB.prepare(
+          `INSERT INTO assignments (id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes)
+           VALUES (?,?,?,?,?,?,?,?) RETURNING *`
+        ).bind(id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes).first();
+        return new Response(JSON.stringify({ assignment: row }), { headers: CORS });
+      }
+
+      // PUT /api/assignments/:id
+      const asnMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
+      if (asnMatch && request.method === "PUT") {
+        const asnId = asnMatch[1];
+        const { status, grade = null, notes = null } = body as Record<string, unknown>;
+        const fields: string[] = [];
+        const vals: unknown[] = [];
+        if (status !== undefined) { fields.push("status = ?"); vals.push(status); }
+        if (grade   !== undefined) { fields.push("grade = ?");  vals.push(grade); }
+        if (notes   !== undefined) { fields.push("notes = ?");  vals.push(notes); }
+        if (!fields.length) return invalid("No updatable fields provided");
+        const row = await env.DB.prepare(
+          `UPDATE assignments SET ${fields.join(", ")} WHERE id = ? RETURNING *`
+        ).bind(...vals, asnId).first();
+        if (!row) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
+        return new Response(JSON.stringify({ assignment: row }), { headers: CORS });
+      }
+    }
+
     if (url.pathname !== "/mcp" || request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Not found" }), { status: 404, headers: CORS });
     }

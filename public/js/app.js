@@ -288,6 +288,7 @@ function renderCourses() {
           </div>`).join('') : `<div style="font-size:12px;color:var(--ink-low);padding:6px 0;">No assignments yet.</div>`}
       </div>
       <button class="btn-add-asn" data-course="${esc(course.id)}" data-okr="${esc(course.okr_id)}">+ Add assignment</button>
+      <button class="btn-import-syllabus" data-course="${esc(course.id)}" data-name="${esc(course.name)}">📄 Import syllabus</button>
       <div class="add-asn-form" id="form-${esc(course.id)}">
         <div class="form-grid">
           <div class="form-group">
@@ -321,6 +322,11 @@ function renderCourses() {
       </div>
     </div>`;
   }).join('');
+
+  // Import syllabus
+  grid.querySelectorAll('.btn-import-syllabus').forEach(btn => {
+    btn.addEventListener('click', () => openSyllabusModal(btn.dataset.course, btn.dataset.name));
+  });
 
   // Add assignment toggle
   grid.querySelectorAll('.btn-add-asn').forEach(btn => {
@@ -501,6 +507,126 @@ async function refreshAsnSelect(okrId) {
     filtered.map(a => `<option value="${esc(a.id)}">${esc(a.title)} (${esc(a.course_name)})</option>`).join('');
 }
 
+// ── SYLLABUS IMPORT MODAL ──────────────────────────────────────────────────
+let syllabusTargetCourse = null;
+let parsedAssignments = [];
+
+function openSyllabusModal(courseId, courseName) {
+  syllabusTargetCourse = courseId;
+  document.getElementById('modal-title').textContent = `Import syllabus — ${courseName}`;
+  document.getElementById('syllabus-text').value = '';
+  showModalStep(1);
+  document.getElementById('syllabus-backdrop').hidden = false;
+}
+
+function closeSyllabusModal() {
+  document.getElementById('syllabus-backdrop').hidden = true;
+  syllabusTargetCourse = null;
+  parsedAssignments = [];
+}
+
+function showModalStep(step) {
+  document.getElementById('modal-step1').hidden = step !== 1;
+  document.getElementById('modal-step2').hidden = step !== 2;
+  document.getElementById('modal-loading').hidden = step !== 'loading';
+}
+
+async function parseSyllabus() {
+  const text = document.getElementById('syllabus-text').value.trim();
+  if (text.length < 20) { toast('Paste some syllabus text first', 'fail'); return; }
+  if (!getToken()) { showTokenPrompt(); closeSyllabusModal(); return; }
+  if (text.length > 40000) toast('Syllabus is long — only the first ~40,000 characters will be parsed', 'fail');
+
+  showModalStep('loading');
+
+  try {
+    const res = await post(`/api/courses/${encodeURIComponent(syllabusTargetCourse)}/parse-syllabus`, { text });
+    if (res.error) { toast(res.error, 'fail'); showModalStep(1); return; }
+
+    parsedAssignments = res.assignments || [];
+    if (!parsedAssignments.length) {
+      toast('No assignments found — try pasting more of the syllabus', 'fail');
+      showModalStep(1);
+      return;
+    }
+
+    // Build preview table
+    document.getElementById('modal-preview-hint').textContent =
+      `Claude found ${parsedAssignments.length} assignment${parsedAssignments.length === 1 ? '' : 's'}. Uncheck any you don't want to import.`;
+
+    const tbody = document.getElementById('preview-body');
+    tbody.innerHTML = parsedAssignments.map((a, i) => {
+      const noDate = !a.due_date;
+      const dateCell = noDate
+        ? '<span style="color:var(--ink-low);font-size:10px;">No date — skip or add manually</span>'
+        : `<span class="mono" style="font-size:11.5px;">${esc(a.due_date)}</span>`;
+      return `
+      <tr${noDate ? ' style="opacity:0.55;"' : ''}>
+        <td><input type="checkbox" class="preview-check" data-idx="${i}"${noDate ? '' : ' checked'} ${noDate ? 'disabled title="No due date — cannot import"' : ''}></td>
+        <td>${esc(a.title)}<br><span style="font-size:11px;color:var(--ink-low);font-family:'JetBrains Mono',monospace;">${esc(a.id)}</span></td>
+        <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
+        <td>${dateCell}</td>
+        <td class="mono" style="font-size:11.5px;">${a.weight_pct ? esc(String(a.weight_pct)) + '%' : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    // Select-all toggle
+    document.getElementById('select-all').addEventListener('change', e => {
+      document.querySelectorAll('.preview-check:not([disabled])').forEach(cb => { cb.checked = e.target.checked; });
+      updateImportButton();
+    });
+
+    updateImportButton();
+    tbody.querySelectorAll('.preview-check').forEach(cb => {
+      cb.addEventListener('change', updateImportButton);
+    });
+
+    showModalStep(2);
+  } catch (e) {
+    if (e.message !== 'Unauthorized') toast('Parse failed — check your write token', 'fail');
+    showModalStep(1);
+  }
+}
+
+function updateImportButton() {
+  const n = document.querySelectorAll('.preview-check:checked').length;
+  document.getElementById('modal-import').textContent = `Import ${n} assignment${n === 1 ? '' : 's'}`;
+  document.getElementById('modal-import').disabled = n === 0;
+}
+
+async function confirmImport() {
+  const checked = [...document.querySelectorAll('.preview-check:checked')].map(cb => {
+    return parsedAssignments[parseInt(cb.dataset.idx)];
+  });
+  if (!checked.length) return;
+
+  document.getElementById('modal-import').disabled = true;
+  document.getElementById('modal-import').textContent = 'Importing…';
+
+  let ok = 0;
+  const errors = [];
+  for (const a of checked) {
+    try {
+      const res = await post('/api/assignments', {
+        id: a.id, course_id: a.course_id, okr_id: a.okr_id,
+        title: a.title, due_date: a.due_date, deliverable_type: a.deliverable_type,
+        weight_pct: a.weight_pct, notes: a.notes,
+      });
+      if (res.error) errors.push(a.title);
+      else ok++;
+    } catch { errors.push(a.title); }
+  }
+
+  closeSyllabusModal();
+  if (ok) toast(`Imported ${ok} assignment${ok === 1 ? '' : 's'} ✓`);
+  if (errors.length) toast(`${errors.length} failed: ${errors.slice(0, 2).join(', ')}`, 'fail');
+
+  // Refresh courses view
+  const { assignments } = await get('/api/assignments').catch(() => ({ assignments: asnData }));
+  asnData = assignments || asnData;
+  renderCourses();
+}
+
 // ── INIT ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -563,6 +689,15 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       if (e.message !== 'Unauthorized') toast('Failed to log task', 'fail');
     }
+  });
+
+  // Syllabus modal
+  document.getElementById('modal-close').addEventListener('click', closeSyllabusModal);
+  document.getElementById('modal-parse').addEventListener('click', parseSyllabus);
+  document.getElementById('modal-import').addEventListener('click', confirmImport);
+  document.getElementById('modal-back').addEventListener('click', () => showModalStep(1));
+  document.getElementById('syllabus-backdrop').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSyllabusModal();
   });
 
   // Deadlines filters

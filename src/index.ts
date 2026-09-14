@@ -14,12 +14,13 @@
 export interface Env {
   DB: D1Database;
   MCP_SECRET_TOKEN?: string;
+  ANTHROPIC_API_KEY?: string;
 }
 
 const CORS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -32,6 +33,67 @@ function err(id: unknown, code: number, message: string, status = 200): Response
     JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }),
     { status, headers: CORS }
   );
+}
+
+// ── Syllabus parsing ─────────────────────────────────────────────────────────
+
+interface ParsedAssignment {
+  title: string;
+  due_date: string | null;
+  deliverable_type: string;
+  weight_pct: number;
+  notes: string | null;
+}
+
+async function callClaude(apiKey: string, courseLabel: string, syllabusText: string): Promise<ParsedAssignment[]> {
+  const prompt = `You are extracting graded assignments from a course syllabus.
+
+Course: ${courseLabel}
+
+Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
+{
+  "title": string,
+  "due_date": "YYYY-MM-DD" or null if not specified,
+  "deliverable_type": one of "Exam" | "Essay" | "Project" | "Reading" | "Code" | "Presentation",
+  "weight_pct": number (percentage of final grade, 0 if unspecified),
+  "notes": string or null
+}
+
+Map assignment types as follows:
+- Quiz, midterm, final → "Exam"
+- Lab report, lab, problem set, homework, worksheet → "Code"
+- Paper, report, reflection → "Essay"
+- Group project, capstone, portfolio → "Project"
+- Required reading, textbook chapter → "Reading"
+- Presentation, demo, talk → "Presentation"
+
+Include: exams, quizzes, homework, problem sets, labs, essays, projects, presentations.
+Exclude: participation, attendance, office hours, ungraded readings.
+
+Syllabus:
+${syllabusText.slice(0, 40000)}`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!resp.ok) throw new Error(`Anthropic API ${resp.status}: ${await resp.text()}`);
+
+  const data = await resp.json() as { content: Array<{ type: string; text: string }> };
+  const raw = data.content.find(c => c.type === "text")?.text?.trim() ?? "[]";
+  // Strip possible markdown fences in case model ignores the instruction
+  const json = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(json) as ParsedAssignment[];
 }
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
@@ -370,6 +432,64 @@ export default {
         ).bind(...vals, asnId).first();
         if (!row) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
         return new Response(JSON.stringify({ assignment: row }), { headers: CORS });
+      }
+
+      // POST /api/courses/:id/parse-syllabus — call Claude, return preview (no DB write)
+      const parseSylMatch = url.pathname.match(/^\/api\/courses\/([^/]+)\/parse-syllabus$/);
+      if (parseSylMatch && request.method === "POST") {
+        const courseId = parseSylMatch[1];
+        const course = await env.DB.prepare(
+          "SELECT id, name, okr_id FROM courses WHERE id = ?"
+        ).bind(courseId).first<{ id: string; name: string; okr_id: string }>();
+        if (!course) return new Response(JSON.stringify({ error: "Course not found" }), { status: 404, headers: CORS });
+
+        const { text } = body as { text?: string };
+        if (!text || typeof text !== "string" || text.trim().length < 20)
+          return invalid("text must be at least 20 characters");
+
+        if (!env.ANTHROPIC_API_KEY) {
+          return new Response(
+            JSON.stringify({ error: "ANTHROPIC_API_KEY not configured — run: wrangler secret put ANTHROPIC_API_KEY" }),
+            { status: 503, headers: CORS }
+          );
+        }
+
+        // Determine next suffix by scanning existing IDs to avoid collisions
+        const idRows = await env.DB.prepare(
+          "SELECT id FROM assignments WHERE course_id = ?"
+        ).bind(courseId).all<{ id: string }>();
+        let maxSuffix = 0;
+        for (const row of idRows.results ?? []) {
+          const m = row.id.match(/-A(\d+)$/);
+          if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
+        }
+        const nextIdx = maxSuffix + 1;
+
+        let parsed: ParsedAssignment[];
+        try {
+          parsed = await callClaude(env.ANTHROPIC_API_KEY, `${course.name} (${course.id})`, text);
+        } catch (e) {
+          return new Response(
+            JSON.stringify({ error: `Parse failed: ${e instanceof Error ? e.message : String(e)}` }),
+            { status: 502, headers: CORS }
+          );
+        }
+
+        const VALID_TYPES = new Set(["Essay","Exam","Project","Reading","Code","Presentation"]);
+        // Attach IDs and course/okr references (no DB write yet — preview only)
+        const assignments = parsed.map((a, i) => ({
+          id: `${courseId}-A${nextIdx + i}`,
+          course_id: courseId,
+          okr_id: course.okr_id,
+          title: a.title,
+          due_date: a.due_date ?? null,
+          deliverable_type: VALID_TYPES.has(a.deliverable_type) ? a.deliverable_type : "Project",
+          weight_pct: Number(a.weight_pct) || 0,
+          notes: a.notes ?? null,
+          status: "Not Started",
+        }));
+
+        return new Response(JSON.stringify({ course, assignments, count: assignments.length }), { headers: CORS });
       }
     }
 

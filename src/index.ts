@@ -422,10 +422,11 @@ export default {
         const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
         if (!okr) return invalid(`OKR '${okr_id}' not found`);
         const row = await env.DB.prepare(
-          `INSERT INTO assignments (id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes)
+          `INSERT OR IGNORE INTO assignments (id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes)
            VALUES (?,?,?,?,?,?,?,?) RETURNING *`
         ).bind(id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes).first();
-        return new Response(JSON.stringify({ assignment: row }), { headers: CORS });
+        // row is null when the id already existed (IGNORE) — treat as success
+        return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
       }
 
       // PUT /api/assignments/:id

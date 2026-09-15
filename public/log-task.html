@@ -1,0 +1,679 @@
+<title>Academic Task Logger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Serif+Display&display=swap">
+
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1e2335;
+    --border: rgba(255,255,255,0.08);
+    --border-focus: rgba(99,179,237,0.6);
+    --text: #e8eaf0;
+    --muted: #7a80a0;
+    --accent: #63b3ed;
+    --accent-dim: rgba(99,179,237,0.12);
+    --success: #68d391;
+    --success-dim: rgba(104,211,145,0.12);
+    --error: #fc8181;
+    --error-dim: rgba(252,129,129,0.12);
+    --radius: 10px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f6fb;
+      --surface: #ffffff;
+      --surface2: #f0f2f8;
+      --border: rgba(0,0,0,0.1);
+      --border-focus: rgba(49,130,206,0.5);
+      --text: #1a1f36;
+      --muted: #6b7280;
+      --accent: #3182ce;
+      --accent-dim: rgba(49,130,206,0.08);
+      --success: #38a169;
+      --success-dim: rgba(56,161,105,0.08);
+      --error: #e53e3e;
+      --error-dim: rgba(229,62,62,0.08);
+    }
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface2: #f0f2f8;
+    --border: rgba(0,0,0,0.1);
+    --border-focus: rgba(49,130,206,0.5);
+    --text: #1a1f36;
+    --muted: #6b7280;
+    --accent: #3182ce;
+    --accent-dim: rgba(49,130,206,0.08);
+    --success: #38a169;
+    --success-dim: rgba(56,161,105,0.08);
+    --error: #e53e3e;
+    --error-dim: rgba(229,62,62,0.08);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    padding: calc(env(safe-area-inset-top, 0px) + 20px) 16px
+             calc(env(safe-area-inset-bottom, 0px) + 24px);
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .header-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .header-text h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    text-wrap: balance;
+  }
+
+  .header-text p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  form {
+    padding: 18px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  label .req {
+    color: var(--accent);
+    margin-left: 2px;
+  }
+
+  textarea, select, input[type="text"] {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 12px;
+    width: 100%;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  textarea {
+    resize: vertical;
+    min-height: 72px;
+    line-height: 1.5;
+  }
+
+  textarea:focus, select:focus, input[type="text"]:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a80a0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    cursor: pointer;
+  }
+
+  .time-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .time-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 4px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.12s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .time-btn:hover {
+    border-color: var(--border-focus);
+    color: var(--text);
+  }
+
+  .time-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .time-custom {
+    grid-column: span 4;
+    display: none;
+  }
+
+  .time-custom.visible { display: block; }
+
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .status-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 4px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.12s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .status-btn.active[data-status="Done"] {
+    background: var(--success-dim);
+    border-color: var(--success);
+    color: var(--success);
+  }
+
+  .status-btn.active[data-status="In Progress"] {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .status-btn.active[data-status="To Do"] {
+    background: rgba(160,120,240,0.12);
+    border-color: rgba(160,120,240,0.7);
+    color: rgb(180,140,250);
+  }
+
+  .optional-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .optional-toggle svg {
+    transition: transform 0.15s;
+  }
+
+  .optional-toggle.open svg {
+    transform: rotate(90deg);
+  }
+
+  .optional-fields {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 2px;
+  }
+
+  .optional-fields.open { display: flex; }
+
+  .submit-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px;
+    width: 100%;
+    transition: opacity 0.15s, transform 0.1s;
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: 4px;
+  }
+
+  .submit-btn:hover { opacity: 0.9; }
+  .submit-btn:active { transform: scale(0.98); }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .toast {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    margin-top: 12px;
+    border: 1px solid;
+  }
+
+  .toast.success {
+    background: var(--success-dim);
+    border-color: var(--success);
+    color: var(--success);
+    display: flex;
+  }
+
+  .toast.error {
+    background: var(--error-dim);
+    border-color: var(--error);
+    color: var(--error);
+    display: flex;
+  }
+
+  .loading-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 4px 0;
+  }
+
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 400px) {
+    .card-header { padding: 16px 16px 14px; }
+    form { padding: 14px 16px 16px; gap: 12px; }
+  }
+</style>
+
+<div class="card">
+  <div class="card-header">
+    <div class="header-icon">📚</div>
+    <div class="header-text">
+      <h1>Log Academic Task</h1>
+      <p>Records to your College Tracker</p>
+    </div>
+  </div>
+
+  <form id="taskForm">
+    <div class="field">
+      <label for="okrSelect">OKR <span class="req">*</span></label>
+      <div class="loading-row" id="okrLoading">
+        <div class="spinner"></div>
+        <span>Loading OKRs…</span>
+      </div>
+      <select id="okrSelect" name="okr_id" required hidden>
+        <option value="">Select OKR</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="descField">Task <span class="req">*</span></label>
+      <textarea id="descField" name="description" placeholder="What did you work on?" required rows="3"></textarea>
+    </div>
+
+    <div class="field">
+      <label>Time Spent</label>
+      <div class="time-grid">
+        <button type="button" class="time-btn" data-val="15m">15m</button>
+        <button type="button" class="time-btn" data-val="30m">30m</button>
+        <button type="button" class="time-btn active" data-val="1h">1h</button>
+        <button type="button" class="time-btn" data-val="custom">Other</button>
+        <input type="text" class="time-custom" id="timeCustom" placeholder="e.g. 2.5h, 45m">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Status</label>
+      <div class="status-grid">
+        <button type="button" class="status-btn active" data-status="Done">Done</button>
+        <button type="button" class="status-btn" data-status="In Progress">In Progress</button>
+        <button type="button" class="status-btn" data-status="To Do">To Do</button>
+      </div>
+    </div>
+
+    <div>
+      <button type="button" class="optional-toggle" id="optToggle">
+        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+          <path d="M2 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Optional fields
+      </button>
+      <div class="optional-fields" id="optFields">
+        <div class="field" style="margin-top:10px">
+          <label for="assignmentSelect">Assignment</label>
+          <div class="loading-row" id="assignLoading" hidden>
+            <div class="spinner"></div>
+            <span>Loading assignments…</span>
+          </div>
+          <select id="assignmentSelect" name="assignment_id">
+            <option value="">— none —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="notesField">Notes</label>
+          <textarea id="notesField" name="notes" rows="2" placeholder="Any extra context"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn">Log Task</button>
+
+    <div class="toast" id="toast"></div>
+  </form>
+</div>
+
+<script>
+  const WORKER = 'https://college-tracker.asialakaygrady-6d4.workers.dev';
+
+  // State
+  let selectedTime = '1h';
+  let selectedStatus = 'Done';
+
+  // Load OKRs
+  async function loadOKRs() {
+    const loading = document.getElementById('okrLoading');
+    const sel = document.getElementById('okrSelect');
+    try {
+      const r = await fetch(`${WORKER}/api/okrs`);
+      const data = await r.json();
+      const okrs = data.okrs || data || [];
+      loading.hidden = true;
+      sel.hidden = false;
+      okrs.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        const kr = o.key_result ? ` — ${o.key_result.slice(0, 42)}${o.key_result.length > 42 ? '…' : ''}` : '';
+        opt.textContent = `${o.id}${kr}`;
+        if (o.id === 'KR-ACAD-1') opt.selected = true;
+        sel.appendChild(opt);
+      });
+      // Load assignments for the initially selected OKR
+      loadAssignments(sel.value);
+    } catch (e) {
+      loading.innerHTML = `<span style="color:var(--error)">Could not load OKRs — check connection</span>`;
+      sel.hidden = false;
+      sel.innerHTML = '<option value="KR-ACAD-1">KR-ACAD-1 (offline)</option><option value="KR-ACAD-2">KR-ACAD-2</option><option value="KR-CRM-1">KR-CRM-1</option>';
+      loadAssignments('KR-ACAD-1');
+    }
+  }
+
+  // Load assignments for the given OKR — fetches matching courses then their assignments
+  async function loadAssignments(okrId) {
+    const loading = document.getElementById('assignLoading');
+    const sel = document.getElementById('assignmentSelect');
+    if (!okrId) return;
+
+    loading.hidden = false;
+    sel.hidden = true;
+    sel.innerHTML = '<option value="">— none —</option>';
+
+    try {
+      // Get courses for this OKR
+      const cr = await fetch(`${WORKER}/api/courses`);
+      const cd = await cr.json();
+      const courses = (cd.courses || cd || []).filter(c => c.okr_id === okrId);
+
+      if (courses.length === 0) {
+        loading.hidden = true;
+        sel.hidden = false;
+        return;
+      }
+
+      // Fetch assignments for each course in parallel
+      const results = await Promise.all(
+        courses.map(c =>
+          fetch(`${WORKER}/api/assignments?course_id=${encodeURIComponent(c.id)}`)
+            .then(r => r.json())
+            .then(d => ({ course: c, assignments: d.assignments || d || [] }))
+            .catch(() => ({ course: c, assignments: [] }))
+        )
+      );
+
+      results.forEach(({ course, assignments }) => {
+        if (assignments.length === 0) return;
+        const grp = document.createElement('optgroup');
+        grp.label = course.name || course.id;
+        assignments.forEach(a => {
+          const opt = document.createElement('option');
+          opt.value = a.id;
+          const due = a.due_date ? ` · due ${a.due_date}` : '';
+          const type = a.deliverable_type ? ` [${a.deliverable_type}]` : '';
+          opt.textContent = `${a.title}${type}${due}`;
+          grp.appendChild(opt);
+        });
+        sel.appendChild(grp);
+      });
+    } catch (e) {
+      // silently fail — assignment link is optional
+    }
+
+    loading.hidden = true;
+    sel.hidden = false;
+  }
+
+  // Time buttons
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const custom = document.getElementById('timeCustom');
+      if (btn.dataset.val === 'custom') {
+        custom.classList.add('visible');
+        custom.focus();
+        selectedTime = '';
+      } else {
+        custom.classList.remove('visible');
+        selectedTime = btn.dataset.val;
+      }
+    });
+  });
+
+  document.getElementById('timeCustom').addEventListener('input', e => {
+    selectedTime = e.target.value.trim();
+  });
+
+  // Status buttons
+  document.querySelectorAll('.status-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedStatus = btn.dataset.status;
+    });
+  });
+
+  // Reload assignments when OKR changes
+  document.getElementById('okrSelect').addEventListener('change', e => {
+    loadAssignments(e.target.value);
+  });
+
+  // Optional toggle
+  document.getElementById('optToggle').addEventListener('click', () => {
+    const tog = document.getElementById('optToggle');
+    const fields = document.getElementById('optFields');
+    tog.classList.toggle('open');
+    fields.classList.toggle('open');
+  });
+
+  // Toast
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast ${type}`;
+  }
+
+  // Submit
+  document.getElementById('taskForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Logging…';
+
+    const okrId = document.getElementById('okrSelect').value;
+    const desc = document.getElementById('descField').value.trim();
+    const time = selectedTime || document.getElementById('timeCustom').value.trim() || '15m';
+    const assignId = document.getElementById('assignmentSelect').value;
+    const notes = document.getElementById('notesField').value.trim();
+
+    const payload = {
+      description: desc,
+      okr_id: okrId,
+      time_spent: time,
+      status: selectedStatus,
+      source_repo: 'college-tracker',
+    };
+    if (assignId) payload.assignment_id = assignId;
+    if (notes) payload.notes = notes;
+
+    try {
+      const r = await fetch(`${WORKER}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json();
+      if (data.task?.id || data.id) {
+        showToast(`✓ Task logged (ID: ${data.task?.id ?? data.id})`, 'success');
+        document.getElementById('descField').value = '';
+        document.getElementById('notesField').value = '';
+        document.getElementById('assignmentSelect').value = '';
+      } else {
+        showToast(`Error: ${data.error || JSON.stringify(data)}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Network error: ${err.message}`, 'error');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Log Task';
+  });
+
+  // Pre-fill from query params (when opened from the Artifact launcher)
+  function applyQueryParams() {
+    const p = new URLSearchParams(location.search);
+    if (p.get('description')) document.getElementById('descField').value = p.get('description');
+    if (p.get('notes')) document.getElementById('notesField').value = p.get('notes');
+    if (p.get('status')) {
+      const s = p.get('status');
+      document.querySelectorAll('.status-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.status === s);
+      });
+      selectedStatus = s;
+    }
+    if (p.get('time_spent')) {
+      const t = p.get('time_spent');
+      let matched = false;
+      document.querySelectorAll('.time-btn').forEach(b => {
+        if (b.dataset.val === t) { b.classList.add('active'); matched = true; }
+        else b.classList.remove('active');
+      });
+      if (!matched) {
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('[data-val="custom"]').classList.add('active');
+        document.getElementById('timeCustom').classList.add('visible');
+        document.getElementById('timeCustom').value = t;
+      }
+      selectedTime = t;
+    }
+  }
+
+  loadOKRs().then(() => {
+    const okrParam = new URLSearchParams(location.search).get('okr_id');
+    if (okrParam) {
+      const sel = document.getElementById('okrSelect');
+      if ([...sel.options].some(o => o.value === okrParam)) sel.value = okrParam;
+      loadAssignments(okrParam).then(() => {
+        const aParam = new URLSearchParams(location.search).get('assignment_id');
+        if (aParam) {
+          const asel = document.getElementById('assignmentSelect');
+          if ([...asel.options].some(o => o.value === aParam)) asel.value = aParam;
+        }
+      });
+    }
+    applyQueryParams();
+  });
+</script>

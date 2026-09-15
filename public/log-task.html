@@ -632,5 +632,48 @@
     btn.textContent = 'Log Task';
   });
 
-  loadOKRs();
+  // Pre-fill from query params (when opened from the Artifact launcher)
+  function applyQueryParams() {
+    const p = new URLSearchParams(location.search);
+    if (p.get('description')) document.getElementById('descField').value = p.get('description');
+    if (p.get('notes')) document.getElementById('notesField').value = p.get('notes');
+    if (p.get('status')) {
+      const s = p.get('status');
+      document.querySelectorAll('.status-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.status === s);
+      });
+      selectedStatus = s;
+    }
+    if (p.get('time_spent')) {
+      const t = p.get('time_spent');
+      let matched = false;
+      document.querySelectorAll('.time-btn').forEach(b => {
+        if (b.dataset.val === t) { b.classList.add('active'); matched = true; }
+        else b.classList.remove('active');
+      });
+      if (!matched) {
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('[data-val="custom"]').classList.add('active');
+        document.getElementById('timeCustom').classList.add('visible');
+        document.getElementById('timeCustom').value = t;
+      }
+      selectedTime = t;
+    }
+  }
+
+  loadOKRs().then(() => {
+    const okrParam = new URLSearchParams(location.search).get('okr_id');
+    if (okrParam) {
+      const sel = document.getElementById('okrSelect');
+      if ([...sel.options].some(o => o.value === okrParam)) sel.value = okrParam;
+      loadAssignments(okrParam).then(() => {
+        const aParam = new URLSearchParams(location.search).get('assignment_id');
+        if (aParam) {
+          const asel = document.getElementById('assignmentSelect');
+          if ([...asel.options].some(o => o.value === aParam)) asel.value = aParam;
+        }
+      });
+    }
+    applyQueryParams();
+  });
 </script>

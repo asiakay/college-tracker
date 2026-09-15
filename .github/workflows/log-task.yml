@@ -4,20 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       description:
-        description: "What was accomplished"
+        description: "Task"
         required: true
       okr_id:
-        description: "OKR ID (e.g. KR-ACAD-1)"
+        description: "OKR ID"
         required: true
+        default: "KR-ACAD-1"
       assignment_id:
-        description: "Assignment ID to link (optional, e.g. SCI-133-F26-A1)"
+        description: "Assignment ID"
         required: false
       time_spent:
-        description: "Time spent (e.g. 15m, 1h, 2.5h)"
+        description: "Time spent"
         required: false
         default: "15m"
       status:
-        description: "Task status"
+        description: "Status"
         required: false
         default: Done
         type: choice
@@ -26,7 +27,7 @@ on:
           - In Progress
           - To Do
       notes:
-        description: "Optional notes"
+        description: "Notes"
         required: false
 
 jobs:

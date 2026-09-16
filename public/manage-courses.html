@@ -29,39 +29,22 @@
 
   @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
-      --bg: #f4f6fb;
-      --surface: #ffffff;
-      --surface2: #f0f2f8;
-      --border: rgba(0,0,0,0.1);
-      --border-focus: rgba(49,130,206,0.5);
-      --text: #1a1f36;
-      --muted: #6b7280;
-      --accent: #3182ce;
-      --accent-dim: rgba(49,130,206,0.08);
-      --success: #38a169;
-      --success-dim: rgba(56,161,105,0.08);
-      --error: #e53e3e;
-      --error-dim: rgba(229,62,62,0.08);
-      --warn: #c05621;
+      --bg: #f4f6fb; --surface: #ffffff; --surface2: #f0f2f8;
+      --border: rgba(0,0,0,0.1); --border-focus: rgba(49,130,206,0.5);
+      --text: #1a1f36; --muted: #6b7280; --accent: #3182ce;
+      --accent-dim: rgba(49,130,206,0.08); --success: #38a169;
+      --success-dim: rgba(56,161,105,0.08); --error: #e53e3e;
+      --error-dim: rgba(229,62,62,0.08); --warn: #c05621;
       --warn-dim: rgba(192,86,33,0.08);
     }
   }
-
   :root[data-theme="light"] {
-    --bg: #f4f6fb;
-    --surface: #ffffff;
-    --surface2: #f0f2f8;
-    --border: rgba(0,0,0,0.1);
-    --border-focus: rgba(49,130,206,0.5);
-    --text: #1a1f36;
-    --muted: #6b7280;
-    --accent: #3182ce;
-    --accent-dim: rgba(49,130,206,0.08);
-    --success: #38a169;
-    --success-dim: rgba(56,161,105,0.08);
-    --error: #e53e3e;
-    --error-dim: rgba(229,62,62,0.08);
-    --warn: #c05621;
+    --bg: #f4f6fb; --surface: #ffffff; --surface2: #f0f2f8;
+    --border: rgba(0,0,0,0.1); --border-focus: rgba(49,130,206,0.5);
+    --text: #1a1f36; --muted: #6b7280; --accent: #3182ce;
+    --accent-dim: rgba(49,130,206,0.08); --success: #38a169;
+    --success-dim: rgba(56,161,105,0.08); --error: #e53e3e;
+    --error-dim: rgba(229,62,62,0.08); --warn: #c05621;
     --warn-dim: rgba(192,86,33,0.08);
   }
 
@@ -96,35 +79,24 @@
   }
 
   .header-icon {
-    width: 40px;
-    height: 40px;
+    width: 40px; height: 40px;
     border-radius: 10px;
     background: var(--accent-dim);
     color: var(--accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
   }
 
   .header-text h1 {
     font-family: 'DM Serif Display', serif;
-    font-size: 22px;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-    color: var(--text);
+    font-size: 22px; font-weight: 400;
+    letter-spacing: -0.01em; color: var(--text);
   }
 
-  .header-text p {
-    font-size: 13px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
+  .header-text p { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
   .card {
-    width: 100%;
-    max-width: 520px;
+    width: 100%; max-width: 520px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
@@ -134,152 +106,151 @@
   .card-header {
     padding: 16px 18px;
     border-bottom: 1px solid var(--border);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase;
     color: var(--muted);
   }
 
   /* ── Course list ── */
-  #courseList {
-    display: flex;
-    flex-direction: column;
-  }
+  #courseList { display: flex; flex-direction: column; }
 
   .course-item {
     padding: 14px 18px;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: flex; flex-direction: column; gap: 6px;
   }
-
   .course-item:last-child { border-bottom: none; }
 
   .course-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 10px;
   }
 
-  .course-name {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text);
-  }
+  .course-name { font-size: 15px; font-weight: 500; color: var(--text); }
 
-  .course-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-  }
+  .course-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
   .chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    display: inline-flex; align-items: center;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
   }
+  .chip-term   { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(99,179,237,0.25); }
+  .chip-okr    { background: rgba(160,120,240,0.12); color: rgb(180,140,250); border: 1px solid rgba(160,120,240,0.25); }
+  .chip-credits { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
 
-  .chip-term {
-    background: var(--accent-dim);
-    color: var(--accent);
-    border: 1px solid rgba(99,179,237,0.25);
-  }
-
-  .chip-okr {
-    background: rgba(160,120,240,0.12);
-    color: rgb(180,140,250);
-    border: 1px solid rgba(160,120,240,0.25);
-  }
-
-  .chip-credits {
-    background: var(--surface2);
-    color: var(--muted);
-    border: 1px solid var(--border);
-  }
-
-  .course-actions {
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-  }
+  .course-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
 
   .btn-sm {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 10px;
-    transition: all 0.12s;
-    -webkit-appearance: none;
-    appearance: none;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--muted); cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    padding: 4px 10px; transition: all 0.12s;
+    -webkit-appearance: none; appearance: none;
   }
-
   .btn-sm:hover { color: var(--text); border-color: var(--border-focus); }
+  .btn-sm.accent:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .btn-sm.danger:hover { color: var(--error); border-color: var(--error); background: var(--error-dim); }
 
-  .btn-sm.danger:hover {
-    color: var(--error);
-    border-color: var(--error);
-    background: var(--error-dim);
-  }
-
-  /* Inline edit form */
-  .edit-form {
+  /* ── Inline panel (edit or syllabus) ── */
+  .inline-panel {
     display: none;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 8px;
+    flex-direction: column; gap: 10px;
+    padding-top: 10px;
     border-top: 1px solid var(--border);
     margin-top: 6px;
   }
+  .inline-panel.open { display: flex; }
 
-  .edit-form.open { display: flex; }
+  .edit-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-  .edit-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+  .panel-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ── Syllabus panel ── */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+  .drop-zone input[type="file"] { display: none; }
+  .drop-zone .dz-icon { font-size: 22px; display: block; margin-bottom: 4px; }
+  .file-chosen { font-size: 12px; color: var(--success); margin-top: 4px; }
+
+  .syl-or { text-align: center; font-size: 11px; color: var(--muted); margin: 2px 0; }
+
+  textarea.syl-text {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit; font-size: 13px;
+    padding: 9px 11px; width: 100%;
+    resize: vertical; min-height: 80px;
+    transition: border-color 0.15s;
+  }
+  textarea.syl-text:focus {
+    outline: none; border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-dim);
   }
 
-  .edit-actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
+  /* ── Assignment preview table ── */
+  .preview-wrap {
+    display: none;
+    flex-direction: column; gap: 8px;
+    padding-top: 4px;
+  }
+  .preview-wrap.open { display: flex; }
+
+  .preview-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--muted);
+  }
+
+  .preview-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  .preview-table th {
+    text-align: left; padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .preview-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text); vertical-align: top;
+  }
+  .preview-table tr:last-child td { border-bottom: none; }
+  .preview-table .type-badge {
+    display: inline-block; padding: 1px 6px;
+    border-radius: 4px; font-size: 10px; font-weight: 600;
+    background: var(--surface2); color: var(--muted);
   }
 
   /* ── Add form ── */
   .add-form {
     padding: 16px 18px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: flex; flex-direction: column; gap: 12px;
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
 
   label, .field-label {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--muted);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
   }
-
   label .req { color: var(--accent); margin-left: 2px; }
 
   input[type="text"],
@@ -289,149 +260,78 @@
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    color: var(--text);
-    font-family: inherit;
-    font-size: 14px;
-    padding: 9px 11px;
-    width: 100%;
+    color: var(--text); font-family: inherit;
+    font-size: 14px; padding: 9px 11px; width: 100%;
     transition: border-color 0.15s;
-    -webkit-appearance: none;
-    appearance: none;
+    -webkit-appearance: none; appearance: none;
   }
-
   input:focus, select:focus {
-    outline: none;
-    border-color: var(--border-focus);
+    outline: none; border-color: var(--border-focus);
     box-shadow: 0 0 0 3px var(--accent-dim);
   }
-
   select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a80a0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 11px center;
-    padding-right: 30px;
-    cursor: pointer;
+    background-repeat: no-repeat; background-position: right 11px center;
+    padding-right: 30px; cursor: pointer;
   }
 
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
   .optional-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    cursor: pointer;
-    padding: 0;
-    -webkit-appearance: none;
-    appearance: none;
+    display: flex; align-items: center; gap: 6px;
+    background: none; border: none; color: var(--muted);
+    font-family: inherit; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    cursor: pointer; padding: 0;
+    -webkit-appearance: none; appearance: none;
   }
-
   .optional-toggle svg { transition: transform 0.15s; }
   .optional-toggle.open svg { transform: rotate(90deg); }
 
-  .optional-fields {
-    display: none;
-    flex-direction: column;
-    gap: 12px;
-    padding-top: 2px;
-  }
-
+  .optional-fields { display: none; flex-direction: column; gap: 12px; padding-top: 2px; }
   .optional-fields.open { display: flex; }
 
-  .hint {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
   .submit-btn {
-    background: var(--accent);
-    border: none;
-    border-radius: var(--radius);
-    color: #fff;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 11px;
-    width: 100%;
+    background: var(--accent); border: none; border-radius: var(--radius);
+    color: #fff; cursor: pointer; font-family: inherit;
+    font-size: 14px; font-weight: 600; padding: 11px; width: 100%;
     transition: opacity 0.15s, transform 0.1s;
-    -webkit-appearance: none;
-    appearance: none;
+    -webkit-appearance: none; appearance: none;
   }
-
   .submit-btn:hover { opacity: 0.9; }
   .submit-btn:active { transform: scale(0.98); }
   .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .btn-save {
-    background: var(--accent);
-    border: none;
-    border-radius: 6px;
-    color: #fff;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 6px 14px;
+    background: var(--accent); border: none; border-radius: 6px;
+    color: #fff; cursor: pointer; font-family: inherit;
+    font-size: 13px; font-weight: 600; padding: 6px 14px;
     transition: opacity 0.12s;
-    -webkit-appearance: none;
-    appearance: none;
+    -webkit-appearance: none; appearance: none;
   }
-
   .btn-save:hover { opacity: 0.88; }
   .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .toast {
-    display: none;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 13px;
-    border-radius: var(--radius);
-    font-size: 13px;
-    border: 1px solid;
+    display: none; align-items: center; gap: 10px;
+    padding: 10px 13px; border-radius: var(--radius);
+    font-size: 13px; border: 1px solid;
   }
-
   .toast.success { background: var(--success-dim); border-color: var(--success); color: var(--success); display: flex; }
   .toast.error   { background: var(--error-dim);   border-color: var(--error);   color: var(--error);   display: flex; }
+  .toast.info    { background: var(--accent-dim);  border-color: var(--accent);  color: var(--accent);  display: flex; }
 
-  .loading-row {
-    padding: 18px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .empty-row {
-    padding: 18px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 13px;
-  }
+  .loading-row { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
+  .empty-row   { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
 
   .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    vertical-align: middle;
-    margin-right: 6px;
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
   }
-
   @keyframes spin { to { transform: rotate(360deg); } }
 
   @media (max-width: 420px) {
@@ -492,6 +392,28 @@
       <input type="number" id="addCredits" placeholder="e.g. 3" min="1" max="12">
     </div>
 
+    <!-- Attach Syllabus (optional) -->
+    <div>
+      <button type="button" class="optional-toggle" id="sylToggle">
+        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+          <path d="M2 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Attach Syllabus
+      </button>
+      <div class="optional-fields" id="sylFields">
+        <div style="margin-top:8px">
+          <div class="drop-zone" id="addDropZone">
+            <input type="file" id="addSylFile" accept=".pdf,application/pdf">
+            <span class="dz-icon">📄</span>
+            <div>Drop a PDF here or <strong>tap to browse</strong></div>
+            <div id="addFileChosen" class="file-chosen" hidden></div>
+          </div>
+          <div class="syl-or">— or paste text —</div>
+          <textarea class="syl-text" id="addSylText" rows="4" placeholder="Paste syllabus text (20+ characters)"></textarea>
+        </div>
+      </div>
+    </div>
+
     <div>
       <button type="button" class="optional-toggle" id="optToggle">
         <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
@@ -512,6 +434,22 @@
       </div>
     </div>
 
+    <!-- Assignment preview (shown after parsing) -->
+    <div class="preview-wrap" id="addPreview">
+      <div class="preview-label">Parsed assignments — review before saving</div>
+      <div style="overflow-x:auto">
+        <table class="preview-table" id="addPreviewTable">
+          <thead><tr><th>Title</th><th>Type</th><th>Due</th><th>Weight</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="panel-actions">
+        <button type="button" class="btn-sm" id="addPreviewDiscard">Discard</button>
+        <button type="button" class="btn-save" id="addPreviewSave">Save assignments</button>
+      </div>
+      <div class="toast" id="addPreviewToast"></div>
+    </div>
+
     <button type="submit" class="submit-btn" id="submitBtn">Add Course</button>
     <div class="toast" id="addToast"></div>
   </form>
@@ -520,7 +458,7 @@
 <script>
   const WORKER = 'https://college-tracker.asialakaygrady-6d4.workers.dev';
 
-  // Token persistence
+  // ── Token persistence ─────────────────────────────────────────────────────
   const tokenField = document.getElementById('addToken');
   try { tokenField.value = localStorage.getItem('ct_write_token') || ''; } catch (_) {}
   tokenField.addEventListener('input', () => {
@@ -528,8 +466,9 @@
   });
 
   function getToken() {
-    return (document.getElementById('addToken').value || '').trim() ||
-           ((() => { try { return localStorage.getItem('ct_write_token') || ''; } catch (_) { return ''; } })());
+    const field = (document.getElementById('addToken').value || '').trim();
+    if (field) return field;
+    try { return localStorage.getItem('ct_write_token') || ''; } catch (_) { return ''; }
   }
 
   function authHeaders(extra = {}) {
@@ -539,7 +478,23 @@
     return h;
   }
 
-  // OKR dropdown
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(id, msg, type) {
+    const t = document.getElementById(id);
+    if (!t) return;
+    t.textContent = msg;
+    t.className = `toast ${type}`;
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = 'toast'; }, 6000);
+  }
+
+  // ── OKRs ─────────────────────────────────────────────────────────────────
+  let okrMap = {};
+
   async function loadOKRs() {
     try {
       const r = await fetch(`${WORKER}/api/okrs`);
@@ -554,220 +509,12 @@
         opt.textContent = `${o.id}${kr}`;
         sel.appendChild(opt);
       });
+      okrMap = Object.fromEntries(okrs.map(o => [o.id, o.key_result || '']));
       return okrs;
     } catch (_) {
       document.getElementById('addOkr').innerHTML = '<option value="">Could not load OKRs</option>';
       return [];
     }
-  }
-
-  // Auto-generate course ID from name + term
-  function slugify(str) {
-    return str.toUpperCase()
-      .replace(/[^A-Z0-9\s]/g, '')
-      .trim()
-      .split(/\s+/)
-      .map(w => w.slice(0, 4))
-      .join('-');
-  }
-
-  function termSlug(term) {
-    const m = term.match(/^(Spring|Summer|Fall|Winter)\s+(\d{2,4})/i);
-    if (!m) return term.replace(/\s+/g, '').toUpperCase().slice(0, 6);
-    const season = { spring: 'SP', summer: 'SU', fall: 'F', winter: 'W' }[m[1].toLowerCase()] || m[1].slice(0,2).toUpperCase();
-    return season + m[2].slice(-2);
-  }
-
-  let autoId = true;
-  document.getElementById('addId').addEventListener('input', () => { autoId = false; });
-
-  function updateAutoId() {
-    if (!autoId) return;
-    const name = document.getElementById('addName').value.trim();
-    const term = document.getElementById('addTerm').value.trim();
-    if (name) {
-      document.getElementById('addId').value = slugify(name) + (term ? '-' + termSlug(term) : '');
-    }
-  }
-
-  document.getElementById('addName').addEventListener('input', updateAutoId);
-  document.getElementById('addTerm').addEventListener('input', updateAutoId);
-
-  // Optional toggle
-  document.getElementById('optToggle').addEventListener('click', () => {
-    document.getElementById('optToggle').classList.toggle('open');
-    document.getElementById('optFields').classList.toggle('open');
-  });
-
-  // Toast
-  function showToast(id, msg, type) {
-    const t = document.getElementById(id);
-    t.textContent = msg;
-    t.className = `toast ${type}`;
-    clearTimeout(t._timer);
-    t._timer = setTimeout(() => { t.className = 'toast'; }, 5000);
-  }
-
-  // ── Course list ────────────────────────────────────────────────────────────
-
-  let okrMap = {};
-
-  async function loadCourses() {
-    const list = document.getElementById('courseList');
-    list.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading…</div>';
-    try {
-      const r = await fetch(`${WORKER}/api/courses`);
-      const d = await r.json();
-      const courses = d.courses || [];
-      if (courses.length === 0) {
-        list.innerHTML = '<div class="empty-row">No courses yet. Add one below.</div>';
-        return;
-      }
-      list.innerHTML = '';
-      courses.forEach(c => list.appendChild(buildCourseItem(c)));
-    } catch (e) {
-      list.innerHTML = `<div class="empty-row" style="color:var(--error)">Could not load courses — check connection</div>`;
-    }
-  }
-
-  function buildCourseItem(c) {
-    const item = document.createElement('div');
-    item.className = 'course-item';
-    item.dataset.id = c.id;
-
-    const creditsChip = c.credits ? `<span class="chip chip-credits">${c.credits} cr</span>` : '';
-    const instructor  = c.instructor ? `<span style="font-size:12px;color:var(--muted)">${c.instructor}</span>` : '';
-
-    item.innerHTML = `
-      <div class="course-row">
-        <div>
-          <div class="course-name">${esc(c.name)}</div>
-          <div class="course-meta" style="margin-top:4px">
-            <span class="chip chip-term">${esc(c.term)}</span>
-            <span class="chip chip-okr">${esc(c.okr_id)}</span>
-            ${creditsChip}
-            ${instructor}
-          </div>
-        </div>
-        <div class="course-actions">
-          <button class="btn-sm btn-edit" type="button">Edit</button>
-          <button class="btn-sm danger btn-delete" type="button">Delete</button>
-        </div>
-      </div>
-      <div class="edit-form" id="edit-${esc(c.id)}">
-        <div class="edit-row">
-          <div class="field">
-            <span class="field-label">Name</span>
-            <input type="text" class="ef-name" value="${esc(c.name)}">
-          </div>
-          <div class="field">
-            <span class="field-label">Term</span>
-            <input type="text" class="ef-term" value="${esc(c.term)}">
-          </div>
-        </div>
-        <div class="edit-row">
-          <div class="field">
-            <span class="field-label">OKR</span>
-            <select class="ef-okr"></select>
-          </div>
-          <div class="field">
-            <span class="field-label">Credits</span>
-            <input type="number" class="ef-credits" value="${c.credits || ''}" min="1" max="12">
-          </div>
-        </div>
-        <div class="field">
-          <span class="field-label">Instructor</span>
-          <input type="text" class="ef-instructor" value="${esc(c.instructor || '')}">
-        </div>
-        <div class="edit-actions">
-          <button class="btn-sm btn-cancel" type="button">Cancel</button>
-          <button class="btn-save btn-save-edit" type="button">Save</button>
-        </div>
-        <div class="toast" id="etost-${esc(c.id)}"></div>
-      </div>
-    `;
-
-    // Populate OKR dropdown in edit form
-    const efOkr = item.querySelector('.ef-okr');
-    populateOkrSelect(efOkr, c.okr_id);
-
-    // Edit toggle
-    item.querySelector('.btn-edit').addEventListener('click', () => {
-      const ef = item.querySelector('.edit-form');
-      ef.classList.toggle('open');
-      item.querySelector('.btn-edit').textContent = ef.classList.contains('open') ? 'Close' : 'Edit';
-    });
-
-    item.querySelector('.btn-cancel').addEventListener('click', () => {
-      item.querySelector('.edit-form').classList.remove('open');
-      item.querySelector('.btn-edit').textContent = 'Edit';
-    });
-
-    // Save edit
-    item.querySelector('.btn-save-edit').addEventListener('click', async () => {
-      const btn = item.querySelector('.btn-save-edit');
-      btn.disabled = true;
-      btn.textContent = 'Saving…';
-
-      const payload = {};
-      const name = item.querySelector('.ef-name').value.trim();
-      const term = item.querySelector('.ef-term').value.trim();
-      const okr_id = item.querySelector('.ef-okr').value;
-      const credits = item.querySelector('.ef-credits').value;
-      const instructor = item.querySelector('.ef-instructor').value.trim();
-
-      if (name) payload.name = name;
-      if (term) payload.term = term;
-      if (okr_id) payload.okr_id = okr_id;
-      if (credits) payload.credits = parseInt(credits, 10);
-      if (instructor !== undefined) payload.instructor = instructor || null;
-
-      try {
-        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
-          method: 'PUT',
-          headers: authHeaders(),
-          body: JSON.stringify(payload),
-        });
-        const d = await r.json();
-        if (d.course) {
-          showToast(`etost-${c.id}`, 'Saved', 'success');
-          // Refresh list so card reflects new data
-          setTimeout(loadCourses, 800);
-        } else {
-          showToast(`etost-${c.id}`, `Error: ${d.error || JSON.stringify(d)}`, 'error');
-        }
-      } catch (e) {
-        showToast(`etost-${c.id}`, `Network error: ${e.message}`, 'error');
-      }
-
-      btn.disabled = false;
-      btn.textContent = 'Save';
-    });
-
-    // Delete
-    item.querySelector('.btn-delete').addEventListener('click', async () => {
-      if (!confirm(`Delete "${c.name}"? This cannot be undone.`)) return;
-      try {
-        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
-          method: 'DELETE',
-          headers: authHeaders(),
-        });
-        const d = await r.json();
-        if (d.deleted) {
-          item.remove();
-          const list = document.getElementById('courseList');
-          if (!list.querySelector('.course-item')) {
-            list.innerHTML = '<div class="empty-row">No courses yet. Add one below.</div>';
-          }
-        } else {
-          alert(`Delete failed: ${d.error || JSON.stringify(d)}`);
-        }
-      } catch (e) {
-        alert(`Network error: ${e.message}`);
-      }
-    });
-
-    return item;
   }
 
   function populateOkrSelect(sel, selectedId) {
@@ -781,11 +528,144 @@
     });
   }
 
-  function esc(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // ── Auto-generate course ID ────────────────────────────────────────────────
+  function slugify(str) {
+    return str.toUpperCase().replace(/[^A-Z0-9\s]/g,'').trim()
+      .split(/\s+/).map(w => w.slice(0,4)).join('-');
+  }
+  function termSlug(term) {
+    const m = term.match(/^(Spring|Summer|Fall|Winter)\s+(\d{2,4})/i);
+    if (!m) return term.replace(/\s+/g,'').toUpperCase().slice(0,6);
+    const s = {spring:'SP',summer:'SU',fall:'F',winter:'W'}[m[1].toLowerCase()] || m[1].slice(0,2).toUpperCase();
+    return s + m[2].slice(-2);
   }
 
-  // ── Add form submit ────────────────────────────────────────────────────────
+  let autoId = true;
+  document.getElementById('addId').addEventListener('input', () => { autoId = false; });
+  function updateAutoId() {
+    if (!autoId) return;
+    const name = document.getElementById('addName').value.trim();
+    const term = document.getElementById('addTerm').value.trim();
+    if (name) document.getElementById('addId').value = slugify(name) + (term ? '-' + termSlug(term) : '');
+  }
+  document.getElementById('addName').addEventListener('input', updateAutoId);
+  document.getElementById('addTerm').addEventListener('input', updateAutoId);
+
+  // ── Optional toggles ──────────────────────────────────────────────────────
+  function bindToggle(btnId, fieldsId) {
+    document.getElementById(btnId).addEventListener('click', () => {
+      document.getElementById(btnId).classList.toggle('open');
+      document.getElementById(fieldsId).classList.toggle('open');
+    });
+  }
+  bindToggle('optToggle', 'optFields');
+  bindToggle('sylToggle', 'sylFields');
+
+  // ── Drop zone (Add form) ───────────────────────────────────────────────────
+  const addDropZone = document.getElementById('addDropZone');
+  const addSylFile  = document.getElementById('addSylFile');
+  const addFileChosen = document.getElementById('addFileChosen');
+
+  addDropZone.addEventListener('click', () => addSylFile.click());
+  addDropZone.addEventListener('dragover', e => { e.preventDefault(); addDropZone.classList.add('over'); });
+  addDropZone.addEventListener('dragleave', () => addDropZone.classList.remove('over'));
+  addDropZone.addEventListener('drop', e => {
+    e.preventDefault(); addDropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) { addSylFile.files = e.dataTransfer.files; showFileChosen(addFileChosen, f.name); }
+  });
+  addSylFile.addEventListener('change', () => {
+    if (addSylFile.files[0]) showFileChosen(addFileChosen, addSylFile.files[0].name);
+  });
+
+  function showFileChosen(el, name) {
+    el.textContent = `✓ ${name}`;
+    el.hidden = false;
+  }
+
+  // ── Syllabus parse + save helpers ──────────────────────────────────────────
+
+  async function fileToBase64(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function parseSyllabus(courseId, file, text) {
+    const body = {};
+    if (file) {
+      body.file_base64 = await fileToBase64(file);
+      body.file_type   = file.type || 'application/pdf';
+    } else if (text && text.trim().length >= 20) {
+      body.text = text.trim();
+    } else {
+      throw new Error('Provide a PDF or at least 20 characters of text');
+    }
+
+    const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(courseId)}/parse-syllabus`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!d.assignments) throw new Error(d.error || 'Parse failed');
+    return d.assignments;
+  }
+
+  async function saveAssignments(assignments) {
+    let saved = 0, failed = 0;
+    for (const a of assignments) {
+      try {
+        const r = await fetch(`${WORKER}/api/assignments`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(a),
+        });
+        const d = await r.json();
+        if (d.assignment) saved++;
+        else failed++;
+      } catch (_) { failed++; }
+    }
+    return { saved, failed };
+  }
+
+  function renderPreviewTable(tbody, assignments) {
+    tbody.innerHTML = '';
+    assignments.forEach(a => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(a.title)}</td>
+        <td><span class="type-badge">${esc(a.deliverable_type || '—')}</span></td>
+        <td>${esc(a.due_date || '—')}</td>
+        <td>${a.weight_pct ? a.weight_pct + '%' : '—'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ── Add form ──────────────────────────────────────────────────────────────
+  let pendingAddAssignments = null;
+
+  document.getElementById('addPreviewDiscard').addEventListener('click', () => {
+    pendingAddAssignments = null;
+    document.getElementById('addPreview').classList.remove('open');
+  });
+
+  document.getElementById('addPreviewSave').addEventListener('click', async () => {
+    if (!pendingAddAssignments) return;
+    const btn = document.getElementById('addPreviewSave');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    const { saved, failed } = await saveAssignments(pendingAddAssignments);
+    pendingAddAssignments = null;
+    document.getElementById('addPreview').classList.remove('open');
+    showToast('addToast', `Saved ${saved} assignment${saved !== 1 ? 's' : ''}${failed ? ` (${failed} failed)` : ''}`, failed ? 'error' : 'success');
+    btn.disabled = false;
+    btn.textContent = 'Save assignments';
+  });
 
   document.getElementById('addForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -799,6 +679,8 @@
     const term       = document.getElementById('addTerm').value.trim();
     const credits    = document.getElementById('addCredits').value;
     const instructor = document.getElementById('addInstructor').value.trim();
+    const sylFile    = addSylFile.files[0] || null;
+    const sylText    = document.getElementById('addSylText').value;
 
     const payload = { id, name, okr_id, term };
     if (credits)    payload.credits    = parseInt(credits, 10);
@@ -811,17 +693,46 @@
         body: JSON.stringify(payload),
       });
       const d = await r.json();
-      if (d.course) {
-        showToast('addToast', `Course "${d.course.name}" added`, 'success');
-        document.getElementById('addName').value = '';
-        document.getElementById('addId').value = '';
-        document.getElementById('addCredits').value = '';
-        document.getElementById('addInstructor').value = '';
-        autoId = true;
-        await loadCourses();
-      } else {
+      if (!d.course) {
         showToast('addToast', `Error: ${d.error || JSON.stringify(d)}`, 'error');
+        btn.disabled = false; btn.textContent = 'Add Course';
+        return;
       }
+
+      showToast('addToast', `Course "${d.course.name}" added`, 'success');
+
+      // Reset add form
+      document.getElementById('addName').value = '';
+      document.getElementById('addId').value = '';
+      document.getElementById('addCredits').value = '';
+      document.getElementById('addInstructor').value = '';
+      document.getElementById('addSylText').value = '';
+      addSylFile.value = '';
+      addFileChosen.hidden = true;
+      autoId = true;
+
+      // Parse syllabus if provided
+      if (sylFile || sylText.trim().length >= 20) {
+        btn.textContent = 'Parsing syllabus…';
+        try {
+          const assignments = await parseSyllabus(id, sylFile, sylText);
+          if (assignments.length > 0) {
+            renderPreviewTable(
+              document.querySelector('#addPreviewTable tbody'),
+              assignments
+            );
+            document.getElementById('addPreviewSave').textContent = `Save ${assignments.length} assignments`;
+            pendingAddAssignments = assignments;
+            document.getElementById('addPreview').classList.add('open');
+          } else {
+            showToast('addToast', 'No assignments found in the syllabus', 'info');
+          }
+        } catch (parseErr) {
+          showToast('addToast', `Syllabus parse failed: ${parseErr.message}`, 'error');
+        }
+      }
+
+      await loadCourses();
     } catch (err) {
       showToast('addToast', `Network error: ${err.message}`, 'error');
     }
@@ -830,11 +741,245 @@
     btn.textContent = 'Add Course';
   });
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Course list ────────────────────────────────────────────────────────────
+  async function loadCourses() {
+    const list = document.getElementById('courseList');
+    list.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading…</div>';
+    try {
+      const r = await fetch(`${WORKER}/api/courses`);
+      const d = await r.json();
+      const courses = d.courses || [];
+      if (courses.length === 0) {
+        list.innerHTML = '<div class="empty-row">No courses yet. Add one below.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      courses.forEach(c => list.appendChild(buildCourseItem(c)));
+    } catch (_) {
+      list.innerHTML = `<div class="empty-row" style="color:var(--error)">Could not load courses — check connection</div>`;
+    }
+  }
 
+  function buildCourseItem(c) {
+    const item = document.createElement('div');
+    item.className = 'course-item';
+    item.dataset.id = c.id;
+
+    const creditsChip = c.credits ? `<span class="chip chip-credits">${c.credits} cr</span>` : '';
+    const instructor  = c.instructor ? `<span style="font-size:12px;color:var(--muted)">${esc(c.instructor)}</span>` : '';
+    const editId      = `edit-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const sylId       = `syl-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const etostId     = `etost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const stostId     = `stost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const prevId      = `prev-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const prevTbId    = `prevtb-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const dropId      = `drop-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const fileId      = `file-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const fchosenId   = `fc-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+
+    item.innerHTML = `
+      <div class="course-row">
+        <div>
+          <div class="course-name">${esc(c.name)}</div>
+          <div class="course-meta" style="margin-top:4px">
+            <span class="chip chip-term">${esc(c.term)}</span>
+            <span class="chip chip-okr">${esc(c.okr_id)}</span>
+            ${creditsChip}${instructor}
+          </div>
+        </div>
+        <div class="course-actions">
+          <button class="btn-sm btn-edit" type="button">Edit</button>
+          <button class="btn-sm accent btn-syl" type="button">Syllabus</button>
+          <button class="btn-sm danger btn-delete" type="button">Delete</button>
+        </div>
+      </div>
+
+      <!-- Edit panel -->
+      <div class="inline-panel" id="${editId}">
+        <div class="edit-row">
+          <div class="field"><span class="field-label">Name</span>
+            <input type="text" class="ef-name" value="${esc(c.name)}"></div>
+          <div class="field"><span class="field-label">Term</span>
+            <input type="text" class="ef-term" value="${esc(c.term)}"></div>
+        </div>
+        <div class="edit-row">
+          <div class="field"><span class="field-label">OKR</span>
+            <select class="ef-okr"></select></div>
+          <div class="field"><span class="field-label">Credits</span>
+            <input type="number" class="ef-credits" value="${c.credits || ''}" min="1" max="12"></div>
+        </div>
+        <div class="field"><span class="field-label">Instructor</span>
+          <input type="text" class="ef-instructor" value="${esc(c.instructor || '')}"></div>
+        <div class="panel-actions">
+          <button class="btn-sm btn-cancel-edit" type="button">Cancel</button>
+          <button class="btn-save btn-save-edit" type="button">Save</button>
+        </div>
+        <div class="toast" id="${etostId}"></div>
+      </div>
+
+      <!-- Syllabus panel -->
+      <div class="inline-panel" id="${sylId}">
+        <div class="drop-zone" id="${dropId}">
+          <input type="file" id="${fileId}" accept=".pdf,application/pdf">
+          <span class="dz-icon">📄</span>
+          <div>Drop a PDF here or <strong>tap to browse</strong></div>
+          <div id="${fchosenId}" class="file-chosen" hidden></div>
+        </div>
+        <div class="syl-or">— or paste text —</div>
+        <textarea class="syl-text syl-paste" rows="3" placeholder="Paste syllabus text (20+ characters)"></textarea>
+        <div class="panel-actions">
+          <button class="btn-sm btn-cancel-syl" type="button">Cancel</button>
+          <button class="btn-save btn-parse" type="button">Parse Syllabus</button>
+        </div>
+        <div class="toast" id="${stostId}"></div>
+
+        <!-- Preview -->
+        <div class="preview-wrap" id="${prevId}">
+          <div class="preview-label">Parsed assignments — review before saving</div>
+          <div style="overflow-x:auto">
+            <table class="preview-table">
+              <thead><tr><th>Title</th><th>Type</th><th>Due</th><th>Weight</th></tr></thead>
+              <tbody id="${prevTbId}"></tbody>
+            </table>
+          </div>
+          <div class="panel-actions">
+            <button class="btn-sm btn-discard-preview" type="button">Discard</button>
+            <button class="btn-save btn-save-preview" type="button">Save assignments</button>
+          </div>
+          <div class="toast" id="ptost-${c.id.replace(/[^a-z0-9]/gi,'_')}"></div>
+        </div>
+      </div>
+    `;
+
+    // Populate OKR dropdown in edit panel
+    populateOkrSelect(item.querySelector('.ef-okr'), c.okr_id);
+
+    // ── Edit ──
+    const editPanel = item.querySelector(`#${editId}`);
+    item.querySelector('.btn-edit').addEventListener('click', () => {
+      const open = editPanel.classList.toggle('open');
+      item.querySelector('.btn-edit').textContent = open ? 'Close' : 'Edit';
+      item.querySelector(`#${sylId}`).classList.remove('open');
+    });
+    item.querySelector('.btn-cancel-edit').addEventListener('click', () => {
+      editPanel.classList.remove('open');
+      item.querySelector('.btn-edit').textContent = 'Edit';
+    });
+    item.querySelector('.btn-save-edit').addEventListener('click', async () => {
+      const btn = item.querySelector('.btn-save-edit');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      const payload = {};
+      const name = item.querySelector('.ef-name').value.trim();
+      const term = item.querySelector('.ef-term').value.trim();
+      const okr_id = item.querySelector('.ef-okr').value;
+      const credits = item.querySelector('.ef-credits').value;
+      const instructor = item.querySelector('.ef-instructor').value.trim();
+      if (name) payload.name = name;
+      if (term) payload.term = term;
+      if (okr_id) payload.okr_id = okr_id;
+      if (credits) payload.credits = parseInt(credits, 10);
+      payload.instructor = instructor || null;
+      try {
+        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (d.course) { showToast(etostId, 'Saved', 'success'); setTimeout(loadCourses, 800); }
+        else showToast(etostId, `Error: ${d.error || JSON.stringify(d)}`, 'error');
+      } catch (e) { showToast(etostId, `Network error: ${e.message}`, 'error'); }
+      btn.disabled = false; btn.textContent = 'Save';
+    });
+
+    // ── Syllabus ──
+    const sylPanel = item.querySelector(`#${sylId}`);
+    const dropZone = item.querySelector(`#${dropId}`);
+    const fileInput = item.querySelector(`#${fileId}`);
+    const fChosen  = item.querySelector(`#${fchosenId}`);
+
+    item.querySelector('.btn-syl').addEventListener('click', () => {
+      const open = sylPanel.classList.toggle('open');
+      item.querySelector('.btn-syl').textContent = open ? 'Close' : 'Syllabus';
+      editPanel.classList.remove('open');
+      item.querySelector('.btn-edit').textContent = 'Edit';
+    });
+    item.querySelector('.btn-cancel-syl').addEventListener('click', () => {
+      sylPanel.classList.remove('open');
+      item.querySelector('.btn-syl').textContent = 'Syllabus';
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('over');
+      const f = e.dataTransfer.files[0];
+      if (f) { fileInput.files = e.dataTransfer.files; showFileChosen(fChosen, f.name); }
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) showFileChosen(fChosen, fileInput.files[0].name);
+    });
+
+    let pendingAssignments = null;
+
+    item.querySelector('.btn-parse').addEventListener('click', async () => {
+      const btn = item.querySelector('.btn-parse');
+      btn.disabled = true; btn.textContent = 'Parsing…';
+      const file = fileInput.files[0] || null;
+      const text = item.querySelector('.syl-paste').value;
+      try {
+        const assignments = await parseSyllabus(c.id, file, text);
+        if (assignments.length === 0) {
+          showToast(stostId, 'No assignments found in the syllabus', 'info');
+        } else {
+          renderPreviewTable(item.querySelector(`#${prevTbId}`), assignments);
+          item.querySelector('.btn-save-preview').textContent = `Save ${assignments.length} assignments`;
+          pendingAssignments = assignments;
+          item.querySelector(`#${prevId}`).classList.add('open');
+        }
+      } catch (e) { showToast(stostId, e.message, 'error'); }
+      btn.disabled = false; btn.textContent = 'Parse Syllabus';
+    });
+
+    item.querySelector('.btn-discard-preview').addEventListener('click', () => {
+      pendingAssignments = null;
+      item.querySelector(`#${prevId}`).classList.remove('open');
+    });
+
+    const ptostId = `ptost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    item.querySelector('.btn-save-preview').addEventListener('click', async () => {
+      if (!pendingAssignments) return;
+      const btn = item.querySelector('.btn-save-preview');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      const { saved, failed } = await saveAssignments(pendingAssignments);
+      pendingAssignments = null;
+      item.querySelector(`#${prevId}`).classList.remove('open');
+      showToast(ptostId, `Saved ${saved} assignment${saved !== 1 ? 's' : ''}${failed ? ` (${failed} failed)` : ''}`, failed ? 'error' : 'success');
+      btn.disabled = false; btn.textContent = 'Save assignments';
+    });
+
+    // ── Delete ──
+    item.querySelector('.btn-delete').addEventListener('click', async () => {
+      if (!confirm(`Delete "${c.name}"? This cannot be undone.`)) return;
+      try {
+        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
+          method: 'DELETE', headers: authHeaders(),
+        });
+        const d = await r.json();
+        if (d.deleted) {
+          item.remove();
+          const list = document.getElementById('courseList');
+          if (!list.querySelector('.course-item'))
+            list.innerHTML = '<div class="empty-row">No courses yet. Add one below.</div>';
+        } else alert(`Delete failed: ${d.error || JSON.stringify(d)}`);
+      } catch (e) { alert(`Network error: ${e.message}`); }
+    });
+
+    return item;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
   (async () => {
-    const okrs = await loadOKRs();
-    okrMap = Object.fromEntries(okrs.map(o => [o.id, o.key_result || '']));
+    await loadOKRs();
     await loadCourses();
   })();
 </script>

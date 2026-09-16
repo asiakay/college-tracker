@@ -333,7 +333,7 @@ export default {
     if (url.pathname === "/api/courses" && request.method === "GET") {
       const term = url.searchParams.get("term");
       const { results } = await env.DB.prepare(
-        `SELECT id, name, instructor, term, okr_id, created_at FROM courses` +
+        `SELECT id, name, instructor, term, okr_id, credits, created_at FROM courses` +
         (term ? ` WHERE term = ?` : ``) +
         ` ORDER BY term DESC, name ASC`
       ).bind(...(term ? [term] : [])).all();
@@ -467,7 +467,7 @@ export default {
 
     // ── REST: write routes (bearer-token protected) ───────────────────────────
 
-    const isWrite = ["POST", "PUT", "PATCH"].includes(request.method);
+    const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
     if (isWrite && url.pathname.startsWith("/api/")) {
       if (env.MCP_SECRET_TOKEN) {
         const auth = request.headers.get("Authorization") ?? "";
@@ -476,9 +476,11 @@ export default {
         }
       }
 
-      let body: Record<string, unknown>;
-      try { body = await request.json() as Record<string, unknown>; }
-      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+      let body: Record<string, unknown> = {};
+      if (request.method !== "DELETE") {
+        try { body = await request.json() as Record<string, unknown>; }
+        catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+      }
 
       const invalid = (msg: string) =>
         new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
@@ -492,15 +494,48 @@ export default {
 
       // POST /api/courses
       if (url.pathname === "/api/courses" && request.method === "POST") {
-        const { id, name, term, okr_id, instructor = null } = body as Record<string, unknown>;
+        const { id, name, term, okr_id, instructor = null, credits = null } = body as Record<string, unknown>;
         if (!id || !name || !term || !okr_id)
           return invalid("id, name, term, and okr_id are required");
         const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
         if (!okr) return invalid(`OKR '${okr_id}' not found`);
         const row = await env.DB.prepare(
-          `INSERT INTO courses (id, name, term, okr_id, instructor) VALUES (?,?,?,?,?) RETURNING *`
-        ).bind(id, name, term, okr_id, instructor).first();
+          `INSERT INTO courses (id, name, term, okr_id, instructor, credits) VALUES (?,?,?,?,?,?) RETURNING *`
+        ).bind(id, name, term, okr_id, instructor, credits).first();
         return new Response(JSON.stringify({ course: row }), { headers: CORS });
+      }
+
+      // PUT /api/courses/:id
+      const courseMatch = url.pathname.match(/^\/api\/courses\/([^/]+)$/);
+      if (courseMatch && request.method === "PUT") {
+        const courseId = courseMatch[1];
+        const { name, term, okr_id, instructor, credits } = body as Record<string, unknown>;
+        if (okr_id !== undefined) {
+          const okr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
+          if (!okr) return invalid(`OKR '${okr_id}' not found`);
+        }
+        const fields: string[] = [];
+        const vals: unknown[] = [];
+        if (name       !== undefined) { fields.push("name = ?");       vals.push(name); }
+        if (term       !== undefined) { fields.push("term = ?");       vals.push(term); }
+        if (okr_id     !== undefined) { fields.push("okr_id = ?");     vals.push(okr_id); }
+        if (instructor !== undefined) { fields.push("instructor = ?"); vals.push(instructor); }
+        if (credits    !== undefined) { fields.push("credits = ?");    vals.push(credits); }
+        if (!fields.length) return invalid("No updatable fields provided");
+        const row = await env.DB.prepare(
+          `UPDATE courses SET ${fields.join(", ")} WHERE id = ? RETURNING *`
+        ).bind(...vals, courseId).first();
+        if (!row) return new Response(JSON.stringify({ error: "Course not found" }), { status: 404, headers: CORS });
+        return new Response(JSON.stringify({ course: row }), { headers: CORS });
+      }
+
+      // DELETE /api/courses/:id
+      if (courseMatch && request.method === "DELETE") {
+        const courseId = courseMatch[1];
+        const existing = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(courseId).first();
+        if (!existing) return new Response(JSON.stringify({ error: "Course not found" }), { status: 404, headers: CORS });
+        await env.DB.prepare("DELETE FROM courses WHERE id = ?").bind(courseId).run();
+        return new Response(JSON.stringify({ deleted: true, id: courseId }), { headers: CORS });
       }
 
       // PUT /api/assignments/:id

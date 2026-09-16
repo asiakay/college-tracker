@@ -283,7 +283,7 @@ export default {
     }
 
     if (url.pathname === "/api/deadlines" && request.method === "GET") {
-      const days = Math.min(Number(url.searchParams.get("days") ?? 14), 90);
+      const days = Math.min(Number(url.searchParams.get("days") ?? 14), 365);
       const { results } = await env.DB.prepare(
         `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes,
                 a.course_id, a.okr_id,
@@ -291,8 +291,8 @@ export default {
                 o.objective, o.key_result
          FROM assignments a
          JOIN courses c ON c.id = a.course_id
-         JOIN okrs o ON o.id = a.okr_id
-         WHERE a.due_date <= DATE('now', '+' || ? || ' days')
+         LEFT JOIN okrs o ON o.id = a.okr_id
+         WHERE (a.due_date IS NULL OR a.due_date <= DATE('now', '+' || ? || ' days'))
            AND a.status NOT IN ('Submitted', 'Graded')
          ORDER BY a.due_date ASC`
       ).bind(days).all();
@@ -301,33 +301,24 @@ export default {
 
     if (url.pathname === "/api/progress" && request.method === "GET") {
       const category = url.searchParams.get("category");
-      try {
-        const { results } = await env.DB.prepare(
-          `SELECT m.* FROM okr_progress_matrix m` +
-          (category ? ` JOIN okrs o ON o.id = m.okr_id WHERE o.category = ?` : ``) +
-          ` ORDER BY m.okr_id ASC`
-        ).bind(...(category ? [category] : [])).all();
-        return new Response(JSON.stringify({ progress: results }), { headers: CORS });
-      } catch {
-        const { results } = await env.DB.prepare(
-          `SELECT o.id AS okr_id, o.objective, o.key_result,
-                  COALESCE(o.sto_owner,'Self') AS sto_owner,
-                  o.target_date, o.status AS milestone_status,
-                  COUNT(DISTINCT a.id) AS total_assignments,
-                  SUM(CASE WHEN a.status IN ('Submitted','Graded') THEN 1 ELSE 0 END) AS completed_assignments,
-                  COUNT(DISTINCT t.id) AS total_micro_tasks,
-                  SUM(CASE WHEN t.status = 'Done' THEN 1 ELSE 0 END) AS completed_micro_tasks,
-                  ROUND(CASE WHEN COUNT(DISTINCT t.id) = 0 THEN 0.0
-                    ELSE (CAST(SUM(CASE WHEN t.status='Done' THEN 1 ELSE 0 END) AS FLOAT)/COUNT(DISTINCT t.id))*100.0
-                    END, 1) AS task_progress_pct
-           FROM okrs o
-           LEFT JOIN assignments a ON o.id = a.okr_id
-           LEFT JOIN tasks t ON o.id = t.okr_id` +
-          (category ? ` WHERE o.category = ?` : ``) +
-          ` GROUP BY o.id ORDER BY o.id ASC`
-        ).bind(...(category ? [category] : [])).all();
-        return new Response(JSON.stringify({ progress: results }), { headers: CORS });
-      }
+      const { results } = await env.DB.prepare(
+        `SELECT o.id AS okr_id, o.objective, o.key_result,
+                COALESCE(o.sto_owner,'Self') AS sto_owner,
+                o.target_date, o.status AS milestone_status,
+                COUNT(DISTINCT a.id) AS total_assignments,
+                SUM(CASE WHEN a.status IN ('Submitted','Graded') THEN 1 ELSE 0 END) AS completed_assignments,
+                COUNT(DISTINCT t.id) AS total_micro_tasks,
+                SUM(CASE WHEN t.status = 'Done' THEN 1 ELSE 0 END) AS completed_micro_tasks,
+                ROUND(CASE WHEN COUNT(DISTINCT t.id) = 0 THEN 0.0
+                  ELSE (CAST(SUM(CASE WHEN t.status='Done' THEN 1 ELSE 0 END) AS FLOAT)/COUNT(DISTINCT t.id))*100.0
+                  END, 1) AS task_progress_pct
+         FROM okrs o
+         LEFT JOIN assignments a ON o.id = a.okr_id
+         LEFT JOIN tasks t ON o.id = t.okr_id` +
+        (category ? ` WHERE o.category = ?` : ``) +
+        ` GROUP BY o.id ORDER BY o.id ASC`
+      ).bind(...(category ? [category] : [])).all();
+      return new Response(JSON.stringify({ progress: results }), { headers: CORS });
     }
 
     if (url.pathname === "/api/courses" && request.method === "GET") {

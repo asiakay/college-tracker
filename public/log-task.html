@@ -670,7 +670,7 @@
 
   loadOKRs().then(() => {
     const okrParam = new URLSearchParams(location.search).get('okr_id');
-    if (okrParam) {
+    if (okrParam) {ef
       const sel = document.getElementById('okrSelect');
       if ([...sel.options].some(o => o.value === okrParam)) sel.value = okrParam;
       loadAssignments(okrParam).then(() => {

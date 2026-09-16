@@ -427,6 +427,7 @@
       </button>
       <div class="optional-fields" id="sylFields">
         <div style="margin-top:8px">
+          <div id="sylReuseHint" class="file-chosen" hidden style="margin-bottom:6px">✓ Syllabus from "Fill from syllabus" will be used for assignment import</div>
           <div class="drop-zone" id="addDropZone">
             <input type="file" id="addSylFile" accept=".pdf,application/pdf">
             <span class="dz-icon">📄</span>
@@ -652,6 +653,8 @@
         updateAutoId();
       }
       showToast('ciToast', 'Course info extracted — review and edit below', 'success');
+      const sylHint = document.getElementById('sylReuseHint');
+      if (sylHint) sylHint.hidden = false;
     } catch (e) {
       showToast('ciToast', `Extract failed: ${e.message}`, 'error');
     }
@@ -777,8 +780,8 @@
     const term       = document.getElementById('addTerm').value.trim();
     const credits    = document.getElementById('addCredits').value;
     const instructor = document.getElementById('addInstructor').value.trim();
-    const sylFile    = addSylFile.files[0] || null;
-    const sylText    = document.getElementById('addSylText').value;
+    const sylFile    = addSylFile.files[0] || ciFileInput.files[0] || null;
+    const sylText    = document.getElementById('addSylText').value || document.getElementById('ciText').value;
 
     const payload = { id, name, okr_id, term };
     if (credits)    payload.credits    = parseInt(credits, 10);

@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Manage Courses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Serif+Display&display=swap">
+
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --surface2: #1e2335;
+    --border: rgba(255,255,255,0.08);
+    --border-focus: rgba(99,179,237,0.6);
+    --text: #e8eaf0;
+    --muted: #7a80a0;
+    --accent: #63b3ed;
+    --accent-dim: rgba(99,179,237,0.12);
+    --success: #68d391;
+    --success-dim: rgba(104,211,145,0.12);
+    --error: #fc8181;
+    --error-dim: rgba(252,129,129,0.12);
+    --warn: #f6ad55;
+    --warn-dim: rgba(246,173,85,0.12);
+    --radius: 10px;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f6fb;
+      --surface: #ffffff;
+      --surface2: #f0f2f8;
+      --border: rgba(0,0,0,0.1);
+      --border-focus: rgba(49,130,206,0.5);
+      --text: #1a1f36;
+      --muted: #6b7280;
+      --accent: #3182ce;
+      --accent-dim: rgba(49,130,206,0.08);
+      --success: #38a169;
+      --success-dim: rgba(56,161,105,0.08);
+      --error: #e53e3e;
+      --error-dim: rgba(229,62,62,0.08);
+      --warn: #c05621;
+      --warn-dim: rgba(192,86,33,0.08);
+    }
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface2: #f0f2f8;
+    --border: rgba(0,0,0,0.1);
+    --border-focus: rgba(49,130,206,0.5);
+    --text: #1a1f36;
+    --muted: #6b7280;
+    --accent: #3182ce;
+    --accent-dim: rgba(49,130,206,0.08);
+    --success: #38a169;
+    --success-dim: rgba(56,161,105,0.08);
+    --error: #e53e3e;
+    --error-dim: rgba(229,62,62,0.08);
+    --warn: #c05621;
+    --warn-dim: rgba(192,86,33,0.08);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    padding: calc(env(safe-area-inset-top, 0px) + 20px) 16px
+             calc(env(safe-area-inset-bottom, 0px) + 32px);
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .page-header {
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .header-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .header-text h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  .header-text p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ── Course list ── */
+  #courseList {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .course-item {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .course-item:last-child { border-bottom: none; }
+
+  .course-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .course-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .course-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .chip-term {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid rgba(99,179,237,0.25);
+  }
+
+  .chip-okr {
+    background: rgba(160,120,240,0.12);
+    color: rgb(180,140,250);
+    border: 1px solid rgba(160,120,240,0.25);
+  }
+
+  .chip-credits {
+    background: var(--surface2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .course-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .btn-sm {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    transition: all 0.12s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .btn-sm:hover { color: var(--text); border-color: var(--border-focus); }
+
+  .btn-sm.danger:hover {
+    color: var(--error);
+    border-color: var(--error);
+    background: var(--error-dim);
+  }
+
+  /* Inline edit form */
+  .edit-form {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 6px;
+  }
+
+  .edit-form.open { display: flex; }
+
+  .edit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  /* ── Add form ── */
+  .add-form {
+    padding: 16px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  label, .field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  label .req { color: var(--accent); margin-left: 2px; }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 9px 11px;
+    width: 100%;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a80a0' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+    padding-right: 30px;
+    cursor: pointer;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .optional-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .optional-toggle svg { transition: transform 0.15s; }
+  .optional-toggle.open svg { transform: rotate(90deg); }
+
+  .optional-fields {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 2px;
+  }
+
+  .optional-fields.open { display: flex; }
+
+  .hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .submit-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius);
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 11px;
+    width: 100%;
+    transition: opacity 0.15s, transform 0.1s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .submit-btn:hover { opacity: 0.9; }
+  .submit-btn:active { transform: scale(0.98); }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-save {
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    transition: opacity 0.12s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .btn-save:hover { opacity: 0.88; }
+  .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .toast {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 13px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    border: 1px solid;
+  }
+
+  .toast.success { background: var(--success-dim); border-color: var(--success); color: var(--success); display: flex; }
+  .toast.error   { background: var(--error-dim);   border-color: var(--error);   color: var(--error);   display: flex; }
+
+  .loading-row {
+    padding: 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .empty-row {
+    padding: 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 420px) {
+    .form-row, .edit-row { grid-template-columns: 1fr; }
+    .course-row { flex-direction: column; gap: 6px; }
+    .course-actions { align-self: flex-end; }
+  }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <div class="header-icon">🎓</div>
+  <div class="header-text">
+    <h1>Manage Courses</h1>
+    <p>Add, edit, or remove enrolled courses</p>
+  </div>
+</header>
+
+<!-- Course list -->
+<div class="card">
+  <div class="card-header">Enrolled Courses</div>
+  <div id="courseList">
+    <div class="loading-row"><span class="spinner"></span>Loading…</div>
+  </div>
+</div>
+
+<!-- Add course form -->
+<div class="card">
+  <div class="card-header">Add Course</div>
+  <form class="add-form" id="addForm">
+    <div class="form-row">
+      <div class="field">
+        <label for="addName">Name <span class="req">*</span></label>
+        <input type="text" id="addName" placeholder="e.g. Calculus II" required>
+      </div>
+      <div class="field">
+        <label for="addId">ID <span class="req">*</span></label>
+        <input type="text" id="addId" placeholder="e.g. CALC-II-F26" required>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label for="addOkr">OKR <span class="req">*</span></label>
+        <select id="addOkr" required>
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="addTerm">Term <span class="req">*</span></label>
+        <input type="text" id="addTerm" placeholder="e.g. Fall 2026" required>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="addCredits">Credits</label>
+      <input type="number" id="addCredits" placeholder="e.g. 3" min="1" max="12">
+    </div>
+
+    <div>
+      <button type="button" class="optional-toggle" id="optToggle">
+        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+          <path d="M2 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Optional fields
+      </button>
+      <div class="optional-fields" id="optFields">
+        <div class="field" style="margin-top:8px">
+          <label for="addInstructor">Instructor</label>
+          <input type="text" id="addInstructor" placeholder="e.g. Dr. Smith">
+        </div>
+        <div class="field">
+          <label for="addToken">Write Token</label>
+          <input type="password" id="addToken" placeholder="Bearer token (if required)">
+          <span class="hint">Required if the Worker has a write token set. Saved locally in your browser.</span>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn">Add Course</button>
+    <div class="toast" id="addToast"></div>
+  </form>
+</div>
+
+<script>
+  const WORKER = 'https://college-tracker.asialakaygrady-6d4.workers.dev';
+
+  // Token persistence
+  const tokenField = document.getElementById('addToken');
+  try { tokenField.value = localStorage.getItem('ct_write_token') || ''; } catch (_) {}
+  tokenField.addEventListener('input', () => {
+    try { localStorage.setItem('ct_write_token', tokenField.value); } catch (_) {}
+  });
+
+  function getToken() {
+    return (document.getElementById('addToken').value || '').trim() ||
+           ((() => { try { return localStorage.getItem('ct_write_token') || ''; } catch (_) { return ''; } })());
+  }
+
+  function authHeaders(extra = {}) {
+    const token = getToken();
+    const h = { 'Content-Type': 'application/json', ...extra };
+    if (token) h['Authorization'] = `Bearer ${token}`;
+    return h;
+  }
+
+  // OKR dropdown
+  async function loadOKRs() {
+    try {
+      const r = await fetch(`${WORKER}/api/okrs`);
+      const d = await r.json();
+      const okrs = d.okrs || d || [];
+      const sel = document.getElementById('addOkr');
+      sel.innerHTML = '<option value="">Select OKR</option>';
+      okrs.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        const kr = o.key_result ? ` — ${o.key_result.slice(0, 40)}` : '';
+        opt.textContent = `${o.id}${kr}`;
+        sel.appendChild(opt);
+      });
+      return okrs;
+    } catch (_) {
+      document.getElementById('addOkr').innerHTML = '<option value="">Could not load OKRs</option>';
+      return [];
+    }
+  }
+
+  // Auto-generate course ID from name + term
+  function slugify(str) {
+    return str.toUpperCase()
+      .replace(/[^A-Z0-9\s]/g, '')
+      .trim()
+      .split(/\s+/)
+      .map(w => w.slice(0, 4))
+      .join('-');
+  }
+
+  function termSlug(term) {
+    const m = term.match(/^(Spring|Summer|Fall|Winter)\s+(\d{2,4})/i);
+    if (!m) return term.replace(/\s+/g, '').toUpperCase().slice(0, 6);
+    const season = { spring: 'SP', summer: 'SU', fall: 'F', winter: 'W' }[m[1].toLowerCase()] || m[1].slice(0,2).toUpperCase();
+    return season + m[2].slice(-2);
+  }
+
+  let autoId = true;
+  document.getElementById('addId').addEventListener('input', () => { autoId = false; });
+
+  function updateAutoId() {
+    if (!autoId) return;
+    const name = document.getElementById('addName').value.trim();
+    const term = document.getElementById('addTerm').value.trim();
+    if (name) {
+      document.getElementById('addId').value = slugify(name) + (term ? '-' + termSlug(term) : '');
+    }
+  }
+
+  document.getElementById('addName').addEventListener('input', updateAutoId);
+  document.getElementById('addTerm').addEventListener('input', updateAutoId);
+
+  // Optional toggle
+  document.getElementById('optToggle').addEventListener('click', () => {
+    document.getElementById('optToggle').classList.toggle('open');
+    document.getElementById('optFields').classList.toggle('open');
+  });
+
+  // Toast
+  function showToast(id, msg, type) {
+    const t = document.getElementById(id);
+    t.textContent = msg;
+    t.className = `toast ${type}`;
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = 'toast'; }, 5000);
+  }
+
+  // ── Course list ────────────────────────────────────────────────────────────
+
+  let okrMap = {};
+
+  async function loadCourses() {
+    const list = document.getElementById('courseList');
+    list.innerHTML = '<div class="loading-row"><span class="spinner"></span>Loading…</div>';
+    try {
+      const r = await fetch(`${WORKER}/api/courses`);
+      const d = await r.json();
+      const courses = d.courses || [];
+      if (courses.length === 0) {
+        list.innerHTML = '<div class="empty-row">No courses yet. Add one below.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      courses.forEach(c => list.appendChild(buildCourseItem(c)));
+    } catch (e) {
+      list.innerHTML = `<div class="empty-row" style="color:var(--error)">Could not load courses — check connection</div>`;
+    }
+  }
+
+  function buildCourseItem(c) {
+    const item = document.createElement('div');
+    item.className = 'course-item';
+    item.dataset.id = c.id;
+
+    const creditsChip = c.credits ? `<span class="chip chip-credits">${c.credits} cr</span>` : '';
+    const instructor  = c.instructor ? `<span style="font-size:12px;color:var(--muted)">${c.instructor}</span>` : '';
+
+    item.innerHTML = `
+      <div class="course-row">
+        <div>
+          <div class="course-name">${esc(c.name)}</div>
+          <div class="course-meta" style="margin-top:4px">
+            <span class="chip chip-term">${esc(c.term)}</span>
+            <span class="chip chip-okr">${esc(c.okr_id)}</span>
+            ${creditsChip}
+            ${instructor}
+          </div>
+        </div>
+        <div class="course-actions">
+          <button class="btn-sm btn-edit" type="button">Edit</button>
+          <button class="btn-sm danger btn-delete" type="button">Delete</button>
+        </div>
+      </div>
+      <div class="edit-form" id="edit-${esc(c.id)}">
+        <div class="edit-row">
+          <div class="field">
+            <span class="field-label">Name</span>
+            <input type="text" class="ef-name" value="${esc(c.name)}">
+          </div>
+          <div class="field">
+            <span class="field-label">Term</span>
+            <input type="text" class="ef-term" value="${esc(c.term)}">
+          </div>
+        </div>
+        <div class="edit-row">
+          <div class="field">
+            <span class="field-label">OKR</span>
+            <select class="ef-okr"></select>
+          </div>
+          <div class="field">
+            <span class="field-label">Credits</span>
+            <input type="number" class="ef-credits" value="${c.credits || ''}" min="1" max="12">
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Instructor</span>
+          <input type="text" class="ef-instructor" value="${esc(c.instructor || '')}">
+        </div>
+        <div class="edit-actions">
+          <button class="btn-sm btn-cancel" type="button">Cancel</button>
+          <button class="btn-save btn-save-edit" type="button">Save</button>
+        </div>
+        <div class="toast" id="etost-${esc(c.id)}"></div>
+      </div>
+    `;
+
+    // Populate OKR dropdown in edit form
+    const efOkr = item.querySelector('.ef-okr');
+    populateOkrSelect(efOkr, c.okr_id);
+
+    // Edit toggle
+    item.querySelector('.btn-edit').addEventListener('click', () => {
+      const ef = item.querySelector('.edit-form');
+      ef.classList.toggle('open');
+      item.querySelector('.btn-edit').textContent = ef.classList.contains('open') ? 'Close' : 'Edit';
+    });
+
+    item.querySelector('.btn-cancel').addEventListener('click', () => {
+      item.querySelector('.edit-form').classList.remove('open');
+      item.querySelector('.btn-edit').textContent = 'Edit';
+    });
+
+    // Save edit
+    item.querySelector('.btn-save-edit').addEventListener('click', async () => {
+      const btn = item.querySelector('.btn-save-edit');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      const payload = {};
+      const name = item.querySelector('.ef-name').value.trim();
+      const term = item.querySelector('.ef-term').value.trim();
+      const okr_id = item.querySelector('.ef-okr').value;
+      const credits = item.querySelector('.ef-credits').value;
+      const instructor = item.querySelector('.ef-instructor').value.trim();
+
+      if (name) payload.name = name;
+      if (term) payload.term = term;
+      if (okr_id) payload.okr_id = okr_id;
+      if (credits) payload.credits = parseInt(credits, 10);
+      if (instructor !== undefined) payload.instructor = instructor || null;
+
+      try {
+        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (d.course) {
+          showToast(`etost-${c.id}`, 'Saved', 'success');
+          // Refresh list so card reflects new data
+          setTimeout(loadCourses, 800);
+        } else {
+          showToast(`etost-${c.id}`, `Error: ${d.error || JSON.stringify(d)}`, 'error');
+        }
+      } catch (e) {
+        showToast(`etost-${c.id}`, `Network error: ${e.message}`, 'error');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    });
+
+    // Delete
+    item.querySelector('.btn-delete').addEventListener('click', async () => {
+      if (!confirm(`Delete "${c.name}"? This cannot be undone.`)) return;
+      try {
+        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+        const d = await r.json();
+        if (d.deleted) {
+          item.remove();
+          const list = document.getElementById('courseList');
+          if (!list.querySelector('.course-item')) {
+            list.innerHTML = '<div class="empty-row">No courses yet. Add one below.</div>';
+          }
+        } else {
+          alert(`Delete failed: ${d.error || JSON.stringify(d)}`);
+        }
+      } catch (e) {
+        alert(`Network error: ${e.message}`);
+      }
+    });
+
+    return item;
+  }
+
+  function populateOkrSelect(sel, selectedId) {
+    sel.innerHTML = '<option value="">Select OKR</option>';
+    Object.entries(okrMap).forEach(([id, kr]) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = `${id}${kr ? ' — ' + kr.slice(0, 36) : ''}`;
+      if (id === selectedId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Add form submit ────────────────────────────────────────────────────────
+
+  document.getElementById('addForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+
+    const id         = document.getElementById('addId').value.trim();
+    const name       = document.getElementById('addName').value.trim();
+    const okr_id     = document.getElementById('addOkr').value;
+    const term       = document.getElementById('addTerm').value.trim();
+    const credits    = document.getElementById('addCredits').value;
+    const instructor = document.getElementById('addInstructor').value.trim();
+
+    const payload = { id, name, okr_id, term };
+    if (credits)    payload.credits    = parseInt(credits, 10);
+    if (instructor) payload.instructor = instructor;
+
+    try {
+      const r = await fetch(`${WORKER}/api/courses`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (d.course) {
+        showToast('addToast', `Course "${d.course.name}" added`, 'success');
+        document.getElementById('addName').value = '';
+        document.getElementById('addId').value = '';
+        document.getElementById('addCredits').value = '';
+        document.getElementById('addInstructor').value = '';
+        autoId = true;
+        await loadCourses();
+      } else {
+        showToast('addToast', `Error: ${d.error || JSON.stringify(d)}`, 'error');
+      }
+    } catch (err) {
+      showToast('addToast', `Network error: ${err.message}`, 'error');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Add Course';
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
+  (async () => {
+    const okrs = await loadOKRs();
+    okrMap = Object.fromEntries(okrs.map(o => [o.id, o.key_result || '']));
+    await loadCourses();
+  })();
+</script>
+</body>
+</html>

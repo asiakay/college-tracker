@@ -745,6 +745,7 @@
 
   async function saveAssignments(assignments) {
     let saved = 0, failed = 0;
+    const savedIds = [];
     for (const a of assignments) {
       try {
         const r = await fetch(`${WORKER}/api/assignments`, {
@@ -753,9 +754,19 @@
           body: JSON.stringify(a),
         });
         const d = await r.json();
-        if (d.assignment) saved++;
+        if (d.assignment && !d.assignment.skipped) { saved++; savedIds.push(a.id); }
+        else if (d.assignment) saved++;
         else failed++;
       } catch (_) { failed++; }
+    }
+    // Auto-generate tasks for newly saved assignments (fire and forget)
+    if (savedIds.length > 0) {
+      const hdrs = authHeaders();
+      Promise.allSettled(savedIds.map(id =>
+        fetch(`${WORKER}/api/assignments/${encodeURIComponent(id)}/generate-tasks`, {
+          method: 'POST', headers: hdrs,
+        })
+      ));
     }
     return { saved, failed };
   }

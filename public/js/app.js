@@ -208,8 +208,12 @@ function renderDeadlines() {
     const cd = countdown(a.due_date);
     const rowCls = cd.cls === 'urgent' ? 'row-red' : cd.cls === 'soon' ? 'row-amber' : '';
     const id = `s-${a.id}`;
+    const canBreakDown = a.status !== 'Submitted' && a.status !== 'Graded';
     return `<tr class="${rowCls}" data-id="${esc(a.id)}">
-      <td>${esc(a.title)}</td>
+      <td>
+        ${esc(a.title)}
+        ${canBreakDown ? `<button class="btn-breakdown" data-asn="${esc(a.id)}" title="Generate study tasks">Break down →</button>` : ''}
+      </td>
       <td><span class="chip chip-course">${esc(a.course_name)}</span></td>
       <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
       <td class="mono">${a.weight_pct ? a.weight_pct + '%' : '—'}</td>
@@ -251,6 +255,33 @@ function renderDeadlines() {
         renderDeadlines();
       } catch (e) {
         if (e.message !== 'Unauthorized') toast('Failed to update', 'fail');
+      }
+    });
+  });
+
+  // Break down → generate study tasks for an assignment
+  tbody.querySelectorAll('.btn-breakdown').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const token = getToken();
+      if (!token) {
+        toast('Save your write token in the Log task drawer first', 'fail');
+        return;
+      }
+      btn.textContent = 'Generating…';
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/api/assignments/${encodeURIComponent(btn.dataset.asn)}/generate-tasks`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        btn.textContent = `✓ ${d.count} tasks`;
+        toast(`${d.count} tasks generated`);
+      } catch (e) {
+        btn.textContent = 'Break down →';
+        btn.disabled = false;
+        toast(`Task generation failed: ${e.message}`, 'fail');
       }
     });
   });

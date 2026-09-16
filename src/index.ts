@@ -82,7 +82,7 @@ Exclude: participation, attendance, office hours, ungraded readings.`;
         },
         { type: "text", text: instruction },
       ]
-    : [{ type: "text", text: `${instruction}\n\nSyllabus:\n${input.text.slice(0, 40000)}` }];
+    : [{ type: "text", text: `${instruction}\n\nSyllabus:\n${input.text!.slice(0, 40000)}` }];
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -106,6 +106,56 @@ Exclude: participation, attendance, office hours, ungraded readings.`;
   // Strip possible markdown fences in case model ignores the instruction
   const json = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
   return JSON.parse(json) as ParsedAssignment[];
+}
+
+interface GeneratedTask {
+  description: string;
+  time_spent: string;
+}
+
+async function generateTasksForAssignment(
+  apiKey: string,
+  assignment: { title: string; deliverable_type: string; due_date: string | null; course_name: string; weight_pct: number }
+): Promise<GeneratedTask[]> {
+  const prompt = `Break down this assignment into granular, actionable study tasks.
+
+Assignment: ${assignment.title}
+Course: ${assignment.course_name}
+Type: ${assignment.deliverable_type}
+Due: ${assignment.due_date ?? "TBD"}
+Weight: ${assignment.weight_pct}% of final grade
+
+Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
+{
+  "description": string (short, specific action — max 80 chars),
+  "time_spent": string (e.g. "30m", "1h", "1.5h", "2h")
+}
+
+Rules:
+- 4–10 tasks depending on assignment complexity
+- Tasks should be sequential (earlier tasks build on later ones)
+- Include research, drafting/working, reviewing, and submission steps as appropriate
+- Keep task descriptions concrete and specific, not vague ("study for exam")`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!resp.ok) throw new Error(`Anthropic API ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json() as { content: Array<{ type: string; text: string }> };
+  const raw = data.content.find(c => c.type === "text")?.text?.trim() ?? "[]";
+  const json = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  return JSON.parse(json) as GeneratedTask[];
 }
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
@@ -480,7 +530,7 @@ export default {
       let maxSuffix = 0;
       for (const row of idRows.results ?? []) {
         const m = row.id.match(/-A(\d+)$/);
-        if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
+        if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1]!, 10));
       }
       const nextIdx = maxSuffix + 1;
 
@@ -555,6 +605,42 @@ export default {
 
       const invalid = (msg: string) =>
         new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
+
+      // POST /api/assignments/:id/generate-tasks
+      const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
+      if (genTasksMatch && request.method === "POST") {
+        const assignmentId = genTasksMatch[1];
+        const asnRow = await env.DB.prepare(
+          `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,
+                  c.name AS course_name
+           FROM assignments a JOIN courses c ON c.id = a.course_id
+           WHERE a.id = ?`
+        ).bind(assignmentId).first<{
+          id: string; title: string; due_date: string | null;
+          deliverable_type: string; weight_pct: number; okr_id: string; course_name: string;
+        }>();
+        if (!asnRow) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
+        if (!env.ANTHROPIC_API_KEY)
+          return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+        let generated: GeneratedTask[];
+        try {
+          generated = await generateTasksForAssignment(env.ANTHROPIC_API_KEY, asnRow);
+        } catch (e) {
+          return new Response(
+            JSON.stringify({ error: `Task generation failed: ${e instanceof Error ? e.message : String(e)}` }),
+            { status: 502, headers: CORS }
+          );
+        }
+        const tasks: unknown[] = [];
+        for (const t of generated) {
+          const row = await env.DB.prepare(
+            `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status)
+             VALUES (?, ?, ?, 'college-tracker', ?, 'To Do') RETURNING *`
+          ).bind(t.description, asnRow.okr_id, assignmentId, t.time_spent).first();
+          if (row) tasks.push(row);
+        }
+        return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
+      }
 
       // POST /api/tasks
       if (url.pathname === "/api/tasks" && request.method === "POST") {

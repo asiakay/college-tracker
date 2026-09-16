@@ -375,9 +375,9 @@
       <div class="optional-fields" id="ciFields">
         <div style="margin-top:8px">
           <div class="drop-zone" id="ciDropZone">
-            <input type="file" id="ciFile" accept=".pdf,application/pdf">
+            <input type="file" id="ciFile" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
             <span class="dz-icon">📄</span>
-            <div>Drop a PDF here or <strong>tap to browse</strong></div>
+            <div>Drop a PDF or Word doc here or <strong>tap to browse</strong></div>
             <div id="ciFileChosen" class="file-chosen" hidden></div>
           </div>
           <div class="syl-or">— or paste text —</div>
@@ -428,9 +428,9 @@
       <div class="optional-fields" id="sylFields">
         <div style="margin-top:8px">
           <div class="drop-zone" id="addDropZone">
-            <input type="file" id="addSylFile" accept=".pdf,application/pdf">
+            <input type="file" id="addSylFile" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
             <span class="dz-icon">📄</span>
-            <div>Drop a PDF here or <strong>tap to browse</strong></div>
+            <div>Drop a PDF or Word doc here or <strong>tap to browse</strong></div>
             <div id="addFileChosen" class="file-chosen" hidden></div>
           </div>
           <div class="syl-or">— or paste text —</div>
@@ -480,6 +480,7 @@
   </form>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
 <script>
   const WORKER = '';
 
@@ -607,12 +608,18 @@
   async function parseCourseInfo(file, text) {
     const body = {};
     if (file) {
-      body.file_base64 = await fileToBase64(file);
-      body.file_type   = file.type || 'application/pdf';
+      const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                  || file.name?.endsWith('.docx');
+      if (isDocx) {
+        body.text = await docxToText(file);
+      } else {
+        body.file_base64 = await fileToBase64(file);
+        body.file_type   = file.type || 'application/pdf';
+      }
     } else if (text && text.trim().length >= 20) {
       body.text = text.trim();
     } else {
-      throw new Error('Provide a PDF or at least 20 characters of text');
+      throw new Error('Provide a PDF, Word doc, or at least 20 characters of text');
     }
     const r = await fetch(`${WORKER}/api/parse-course-info`, {
       method: 'POST',
@@ -692,15 +699,27 @@
     });
   }
 
+  async function docxToText(file) {
+    const buf = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: buf });
+    return result.value;
+  }
+
   async function parseSyllabus(courseId, file, text) {
     const body = {};
     if (file) {
-      body.file_base64 = await fileToBase64(file);
-      body.file_type   = file.type || 'application/pdf';
+      const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                  || file.name?.endsWith('.docx');
+      if (isDocx) {
+        body.text = await docxToText(file);
+      } else {
+        body.file_base64 = await fileToBase64(file);
+        body.file_type   = file.type || 'application/pdf';
+      }
     } else if (text && text.trim().length >= 20) {
       body.text = text.trim();
     } else {
-      throw new Error('Provide a PDF or at least 20 characters of text');
+      throw new Error('Provide a PDF, Word doc, or at least 20 characters of text');
     }
 
     const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(courseId)}/parse-syllabus`, {
@@ -939,9 +958,9 @@
       <!-- Syllabus panel -->
       <div class="inline-panel" id="${sylId}">
         <div class="drop-zone" id="${dropId}">
-          <input type="file" id="${fileId}" accept=".pdf,application/pdf">
+          <input type="file" id="${fileId}" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
           <span class="dz-icon">📄</span>
-          <div>Drop a PDF here or <strong>tap to browse</strong></div>
+          <div>Drop a PDF or Word doc here or <strong>tap to browse</strong></div>
           <div id="${fchosenId}" class="file-chosen" hidden></div>
         </div>
         <div class="syl-or">— or paste text —</div>

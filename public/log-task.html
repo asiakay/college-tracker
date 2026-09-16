@@ -152,7 +152,7 @@
     margin-left: 2px;
   }
 
-  textarea, select, input[type="text"] {
+  textarea, select, input[type="text"], input[type="password"] {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -172,7 +172,7 @@
     line-height: 1.5;
   }
 
-  textarea:focus, select:focus, input[type="text"]:focus {
+  textarea:focus, select:focus, input[type="text"]:focus, input[type="password"]:focus {
     outline: none;
     border-color: var(--border-focus);
     box-shadow: 0 0 0 3px var(--accent-dim);
@@ -445,6 +445,11 @@
           <label for="notesField">Notes</label>
           <textarea id="notesField" name="notes" rows="2" placeholder="Any extra context"></textarea>
         </div>
+        <div class="field">
+          <label for="tokenField">Write Token</label>
+          <input type="password" id="tokenField" placeholder="Bearer token (if required)">
+          <span style="font-size:12px;color:var(--muted);margin-top:3px">Required if the Worker has a write token set. Saved locally in your browser.</span>
+        </div>
       </div>
     </div>
 
@@ -605,6 +610,7 @@
     const time = selectedTime || document.getElementById('timeCustom').value.trim() || '15m';
     const assignId = document.getElementById('assignmentSelect').value;
     const notes = document.getElementById('notesField').value.trim();
+    const token = document.getElementById('tokenField').value.trim();
 
     const payload = {
       description: desc,
@@ -617,9 +623,11 @@
     if (notes) payload.notes = notes;
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
       const r = await fetch(`${WORKER}/api/tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       });
       const data = await r.json();
@@ -667,6 +675,13 @@
       selectedTime = t;
     }
   }
+
+  // Token persistence
+  const tokenField = document.getElementById('tokenField');
+  try { tokenField.value = localStorage.getItem('ct_write_token') || ''; } catch (_) {}
+  tokenField.addEventListener('input', () => {
+    try { localStorage.setItem('ct_write_token', tokenField.value); } catch (_) {}
+  });
 
   loadOKRs().then(() => {
     const okrParam = new URLSearchParams(location.search).get('okr_id');

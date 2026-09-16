@@ -572,6 +572,26 @@ export default {
         return new Response(JSON.stringify(result), { headers: CORS });
       }
 
+      // POST /api/okrs
+      if (url.pathname === "/api/okrs" && request.method === "POST") {
+        const { id, objective, key_result, category = "education", target_date = null, status = "In Progress" } = body as Record<string, unknown>;
+        if (!id || !objective || !key_result)
+          return invalid("id, objective, and key_result are required");
+        try {
+          const row = await env.DB.prepare(
+            `INSERT INTO okrs (id, objective, key_result, category, target_date, status) VALUES (?,?,?,?,?,?) RETURNING *`
+          ).bind(id, objective, key_result, category, target_date, status).first();
+          return new Response(JSON.stringify({ okr: row }), { headers: CORS });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes("UNIQUE") || msg.includes("unique")) {
+            const existing = await env.DB.prepare("SELECT * FROM okrs WHERE id = ?").bind(id).first();
+            return new Response(JSON.stringify({ okr: existing, skipped: true }), { headers: CORS });
+          }
+          throw e;
+        }
+      }
+
       // POST /api/courses
       if (url.pathname === "/api/courses" && request.method === "POST") {
         const { id, name, term, okr_id, instructor = null, credits = null } = body as Record<string, unknown>;

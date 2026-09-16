@@ -401,8 +401,8 @@
 
     <div class="form-row">
       <div class="field">
-        <label for="addOkr">OKR <span class="req">*</span></label>
-        <select id="addOkr" required>
+        <label for="addOkr">OKR</label>
+        <select id="addOkr">
           <option value="">Loading…</option>
         </select>
       </div>
@@ -526,7 +526,7 @@
       const d = await r.json();
       const okrs = d.okrs || d || [];
       const sel = document.getElementById('addOkr');
-      sel.innerHTML = '<option value="">Select OKR</option>';
+      sel.innerHTML = '<option value="__new__">— auto-create OKR for this course —</option>';
       okrs.forEach(o => {
         const opt = document.createElement('option');
         opt.value = o.id;
@@ -773,12 +773,32 @@
 
     const id         = document.getElementById('addId').value.trim();
     const name       = document.getElementById('addName').value.trim();
-    const okr_id     = document.getElementById('addOkr').value;
+    let okr_id       = document.getElementById('addOkr').value;
     const term       = document.getElementById('addTerm').value.trim();
     const credits    = document.getElementById('addCredits').value;
     const instructor = document.getElementById('addInstructor').value.trim();
-    const sylFile    = addSylFile.files[0] || null;
-    const sylText    = document.getElementById('addSylText').value;
+    const sylFile    = addSylFile.files[0] || ciFileInput.files[0] || null;
+    const sylText    = document.getElementById('addSylText').value || document.getElementById('ciText').value;
+
+    if (okr_id === '__new__' || !okr_id) {
+      const derivedOkrId = 'EDU-' + id;
+      try {
+        const or = await fetch(`${WORKER}/api/okrs`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            id: derivedOkrId,
+            objective: 'Academic — ' + name,
+            key_result: 'Pass ' + name + ' (' + id + ') with a satisfactory grade',
+            category: 'education',
+          }),
+        });
+        const od = await or.json();
+        okr_id = od.okr?.id ?? derivedOkrId;
+      } catch (_) {
+        okr_id = derivedOkrId;
+      }
+    }
 
     const payload = { id, name, okr_id, term };
     if (credits)    payload.credits    = parseInt(credits, 10);
@@ -798,6 +818,7 @@
       }
 
       showToast('addToast', `Course "${d.course.name}" added`, 'success');
+      loadOKRs();
 
       // Reset add form
       document.getElementById('addName').value = '';

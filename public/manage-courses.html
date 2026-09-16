@@ -51,7 +51,7 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   html, body {
-    height: 100%;
+    min-height: 100%;
     background: var(--bg);
     color: var(--text);
     font-family: 'Inter', system-ui, sans-serif;
@@ -100,7 +100,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .card-header {

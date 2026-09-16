@@ -42,27 +42,27 @@ jobs:
 
           INSTRUCTION="You are extracting graded assignments from a course syllabus.
 
-Course: $COURSE_LABEL
+          Course: $COURSE_LABEL
 
-Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
-{
-  \"title\": string,
-  \"due_date\": \"YYYY-MM-DD\" or null if not specified,
-  \"deliverable_type\": one of \"Exam\" | \"Essay\" | \"Project\" | \"Reading\" | \"Code\" | \"Presentation\",
-  \"weight_pct\": number (percentage of final grade, 0 if unspecified),
-  \"notes\": string or null
-}
+          Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
+          {
+            \"title\": string,
+            \"due_date\": \"YYYY-MM-DD\" or null if not specified,
+            \"deliverable_type\": one of \"Exam\" | \"Essay\" | \"Project\" | \"Reading\" | \"Code\" | \"Presentation\",
+            \"weight_pct\": number (percentage of final grade, 0 if unspecified),
+            \"notes\": string or null
+          }
 
-Map assignment types:
-- Quiz, midterm, final → Exam
-- Lab, problem set, homework, worksheet → Code
-- Paper, report, reflection → Essay
-- Group project, capstone, portfolio → Project
-- Required reading, textbook chapter → Reading
-- Presentation, demo, talk → Presentation
+          Map assignment types:
+          - Quiz, midterm, final → Exam
+          - Lab, problem set, homework, worksheet → Code
+          - Paper, report, reflection → Essay
+          - Group project, capstone, portfolio → Project
+          - Required reading, textbook chapter → Reading
+          - Presentation, demo, talk → Presentation
 
-Include: exams, quizzes, homework, problem sets, labs, essays, projects, presentations.
-Exclude: participation, attendance, office hours, ungraded readings."
+          Include: exams, quizzes, homework, problem sets, labs, essays, projects, presentations.
+          Exclude: participation, attendance, office hours, ungraded readings."
 
           # Build request payload
           if [ "$FILE_TYPE" = "pdf" ]; then

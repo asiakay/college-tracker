@@ -373,6 +373,86 @@ export default {
       return new Response(JSON.stringify({ date, tasks: results }), { headers: CORS });
     }
 
+    // ── parse-course-info (public POST — no auth required) ─────────────────
+    if (url.pathname === "/api/parse-course-info" && request.method === "POST") {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+
+      const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
+      const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
+      const hasText = text && typeof text === "string" && text.trim().length >= 20;
+      if (!hasFile && !hasText) {
+        return new Response(
+          JSON.stringify({ error: "Provide a base64-encoded PDF (file_base64) or at least 20 characters of text" }),
+          { status: 422, headers: CORS }
+        );
+      }
+
+      if (!env.ANTHROPIC_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }),
+          { status: 503, headers: CORS }
+        );
+      }
+
+      const ciInstruction = `Extract course information from this syllabus. Return ONLY valid JSON with no markdown fences or explanation:
+{
+  "name": "Full course title",
+  "course_code": "course code, e.g. SCI-133 or ENGL 101",
+  "term": "semester and year, e.g. Fall 2026",
+  "credits": 3,
+  "instructor": "instructor full name or null"
+}`;
+
+      const ciInput: SyllabusInput = hasFile
+        ? { file_base64: file_base64!, file_type: file_type || "application/pdf" }
+        : { text: text! };
+
+      const ciContent: unknown[] = ciInput.file_base64
+        ? [
+            { type: "document", source: { type: "base64", media_type: ciInput.file_type, data: ciInput.file_base64 } },
+            { type: "text", text: ciInstruction },
+          ]
+        : [{ type: "text", text: `${ciInstruction}\n\nSyllabus:\n${(ciInput.text!).slice(0, 40000)}` }];
+
+      let ciParsed: { name?: string; course_code?: string; term?: string; credits?: number | null; instructor?: string | null };
+      try {
+        const ciResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "pdfs-2024-09-25",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 512,
+            messages: [{ role: "user", content: ciContent }],
+          }),
+        });
+        if (!ciResp.ok) throw new Error(`Anthropic API ${ciResp.status}: ${await ciResp.text()}`);
+        const ciData = await ciResp.json() as { content: Array<{ type: string; text: string }> };
+        const ciRaw = ciData.content.find(c => c.type === "text")?.text?.trim() ?? "{}";
+        const ciJson = ciRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        ciParsed = JSON.parse(ciJson);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Parse failed: ${e instanceof Error ? e.message : String(e)}` }),
+          { status: 502, headers: CORS }
+        );
+      }
+
+      return new Response(JSON.stringify({
+        name: ciParsed.name ?? null,
+        course_code: ciParsed.course_code ?? null,
+        term: ciParsed.term ?? null,
+        credits: ciParsed.credits ?? null,
+        instructor: ciParsed.instructor ?? null,
+      }), { headers: CORS });
+    }
+
     // ── parse-syllabus (public POST — no auth required) ──────────────────────
 
     const parseSylMatch = url.pathname.match(/^\/api\/courses\/([^/]+)\/parse-syllabus$/);

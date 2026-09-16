@@ -363,6 +363,31 @@
 <div class="card">
   <div class="card-header">Add Course</div>
   <form class="add-form" id="addForm">
+
+    <!-- Fill from syllabus (optional) -->
+    <div>
+      <button type="button" class="optional-toggle" id="ciToggle">
+        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+          <path d="M2 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Fill from syllabus
+      </button>
+      <div class="optional-fields" id="ciFields">
+        <div style="margin-top:8px">
+          <div class="drop-zone" id="ciDropZone">
+            <input type="file" id="ciFile" accept=".pdf,application/pdf">
+            <span class="dz-icon">📄</span>
+            <div>Drop a PDF here or <strong>tap to browse</strong></div>
+            <div id="ciFileChosen" class="file-chosen" hidden></div>
+          </div>
+          <div class="syl-or">— or paste text —</div>
+          <textarea class="syl-text" id="ciText" rows="4" placeholder="Paste syllabus text (20+ characters)"></textarea>
+          <button type="button" class="btn-save" id="ciExtract" style="margin-top:8px;width:100%">Extract course info →</button>
+          <div class="toast" id="ciToast"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-row">
       <div class="field">
         <label for="addName">Name <span class="req">*</span></label>
@@ -560,6 +585,79 @@
   }
   bindToggle('optToggle', 'optFields');
   bindToggle('sylToggle', 'sylFields');
+  bindToggle('ciToggle', 'ciFields');
+
+  // ── Drop zone (Fill from syllabus) ────────────────────────────────────────
+  const ciDropZone   = document.getElementById('ciDropZone');
+  const ciFileInput  = document.getElementById('ciFile');
+  const ciFileChosen = document.getElementById('ciFileChosen');
+
+  ciDropZone.addEventListener('click', () => ciFileInput.click());
+  ciDropZone.addEventListener('dragover', e => { e.preventDefault(); ciDropZone.classList.add('over'); });
+  ciDropZone.addEventListener('dragleave', () => ciDropZone.classList.remove('over'));
+  ciDropZone.addEventListener('drop', e => {
+    e.preventDefault(); ciDropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) { ciFileInput.files = e.dataTransfer.files; showFileChosen(ciFileChosen, f.name); }
+  });
+  ciFileInput.addEventListener('change', () => {
+    if (ciFileInput.files[0]) showFileChosen(ciFileChosen, ciFileInput.files[0].name);
+  });
+
+  async function parseCourseInfo(file, text) {
+    const body = {};
+    if (file) {
+      body.file_base64 = await fileToBase64(file);
+      body.file_type   = file.type || 'application/pdf';
+    } else if (text && text.trim().length >= 20) {
+      body.text = text.trim();
+    } else {
+      throw new Error('Provide a PDF or at least 20 characters of text');
+    }
+    const r = await fetch(`${WORKER}/api/parse-course-info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  }
+
+  document.getElementById('ciExtract').addEventListener('click', async () => {
+    const btn  = document.getElementById('ciExtract');
+    const file = ciFileInput.files[0] || null;
+    const text = document.getElementById('ciText').value;
+    btn.disabled = true;
+    btn.textContent = 'Extracting…';
+    try {
+      const info = await parseCourseInfo(file, text);
+      if (info.name)    document.getElementById('addName').value = info.name;
+      if (info.term)    document.getElementById('addTerm').value = info.term;
+      if (info.credits) document.getElementById('addCredits').value = info.credits;
+      if (info.instructor) {
+        document.getElementById('addInstructor').value = info.instructor;
+        const optFields = document.getElementById('optFields');
+        if (!optFields.classList.contains('open')) {
+          document.getElementById('optToggle').classList.add('open');
+          optFields.classList.add('open');
+        }
+      }
+      if (info.course_code) {
+        const code = info.course_code.toUpperCase().replace(/\s+/g, '-');
+        const term = document.getElementById('addTerm').value.trim();
+        document.getElementById('addId').value = code + (term ? '-' + termSlug(term) : '');
+        autoId = false;
+      } else {
+        updateAutoId();
+      }
+      showToast('ciToast', 'Course info extracted — review and edit below', 'success');
+    } catch (e) {
+      showToast('ciToast', `Extract failed: ${e.message}`, 'error');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Extract course info →';
+  });
 
   // ── Drop zone (Add form) ───────────────────────────────────────────────────
   const addDropZone = document.getElementById('addDropZone');

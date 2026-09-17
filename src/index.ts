@@ -115,15 +115,18 @@ interface GeneratedTask {
 
 async function generateTasksForAssignment(
   apiKey: string,
-  assignment: { title: string; deliverable_type: string; due_date: string | null; course_name: string; weight_pct: number }
+  assignment: { title: string; deliverable_type: string; due_date: string | null; course_name: string; weight_pct: number; course_notes?: string | null }
 ): Promise<GeneratedTask[]> {
+  const notesSection = assignment.course_notes
+    ? `\nCourse Notes / Context:\n${assignment.course_notes.slice(0, 2000)}`
+    : "";
   const prompt = `Break down this assignment into granular, actionable study tasks.
 
 Assignment: ${assignment.title}
 Course: ${assignment.course_name}
 Type: ${assignment.deliverable_type}
 Due: ${assignment.due_date ?? "TBD"}
-Weight: ${assignment.weight_pct}% of final grade
+Weight: ${assignment.weight_pct}% of final grade${notesSection}
 
 Return ONLY a valid JSON array — no markdown, no explanation, no code fences. Each element:
 {
@@ -374,7 +377,7 @@ export default {
     if (url.pathname === "/api/courses" && request.method === "GET") {
       const term = url.searchParams.get("term");
       const { results } = await env.DB.prepare(
-        `SELECT id, name, instructor, term, okr_id, credits, created_at FROM courses` +
+        `SELECT id, name, instructor, term, okr_id, credits, notes, created_at FROM courses` +
         (term ? ` WHERE term = ?` : ``) +
         ` ORDER BY term DESC, name ASC`
       ).bind(...(term ? [term] : [])).all();
@@ -612,12 +615,13 @@ export default {
         const assignmentId = genTasksMatch[1];
         const asnRow = await env.DB.prepare(
           `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,
-                  c.name AS course_name
+                  c.name AS course_name, c.notes AS course_notes
            FROM assignments a JOIN courses c ON c.id = a.course_id
            WHERE a.id = ?`
         ).bind(assignmentId).first<{
           id: string; title: string; due_date: string | null;
-          deliverable_type: string; weight_pct: number; okr_id: string; course_name: string;
+          deliverable_type: string; weight_pct: number; okr_id: string;
+          course_name: string; course_notes: string | null;
         }>();
         if (!asnRow) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
         if (!env.ANTHROPIC_API_KEY)
@@ -698,6 +702,8 @@ export default {
         if (okr_id     !== undefined) { fields.push("okr_id = ?");     vals.push(okr_id); }
         if (instructor !== undefined) { fields.push("instructor = ?"); vals.push(instructor); }
         if (credits    !== undefined) { fields.push("credits = ?");    vals.push(credits); }
+        const { notes } = body as Record<string, unknown>;
+        if (notes      !== undefined) { fields.push("notes = ?");      vals.push(notes); }
         if (!fields.length) return invalid("No updatable fields provided");
         const row = await env.DB.prepare(
           `UPDATE courses SET ${fields.join(", ")} WHERE id = ? RETURNING *`

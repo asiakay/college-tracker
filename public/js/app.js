@@ -420,7 +420,7 @@ function renderCourses() {
 // ── OKR PROGRESS ──────────────────────────────────────────────────────────
 async function loadProgress() {
   const [prog, asns] = await Promise.all([
-    get('/api/progress').catch(() => ({ progress: [] })),
+    get('/api/progress?category=education').catch(() => ({ progress: [] })),
     get('/api/assignments').catch(() => ({ assignments: [] })),
   ]);
   renderProgress(prog.progress || [], asns.assignments || []);

@@ -1016,7 +1016,8 @@
         </div>
         <div class="syl-or">— or paste text —</div>
         <textarea class="syl-text asn-paste" rows="3" placeholder="Paste assignment description (20+ characters)"></textarea>
-        <button class="btn-save btn-asn-parse" type="button" style="width:100%;margin-bottom:8px">Parse assignment →</button>
+        <button class="btn-save btn-asn-parse" type="button" style="width:100%;margin-bottom:4px">Parse assignment →</button>
+        <button class="btn-sm btn-asn-manual" type="button" style="width:100%;margin-bottom:8px">Enter manually →</button>
 
         <div class="asn-fields" style="display:none">
           <div class="edit-row">
@@ -1028,9 +1029,8 @@
           <div class="edit-row">
             <div class="field"><span class="field-label">Type</span>
               <select class="asn-type">
-                <option>Essay</option><option>Project</option><option>Exam</option>
-                <option>Quiz</option><option>Presentation</option><option>Lab</option>
-                <option>Discussion</option><option>Reading</option><option>Other</option>
+                <option>Essay</option><option>Exam</option><option>Project</option>
+                <option>Reading</option><option>Code</option><option>Presentation</option>
               </select></div>
             <div class="field"><span class="field-label">Weight %</span>
               <input type="number" class="asn-weight" min="0" max="100" value="0"></div>
@@ -1310,6 +1310,7 @@
     });
     asnFileInp.addEventListener('change', () => {
       const f = asnFileInp.files[0]; if (!f) return;
+      asnFileInp._file = null; // clear any prior drag-dropped file
       asnFcEl.textContent = `✓ ${f.name}`; asnFcEl.hidden = false;
     });
 
@@ -1352,8 +1353,7 @@
       }
     });
 
-    // Show fields manually if user wants to type without parsing
-    asnPanel.querySelector('.asn-title').addEventListener('focus', () => {
+    asnPanel.querySelector('.btn-asn-manual').addEventListener('click', () => {
       asnFields.style.display = ''; asnSaveBtn.style.display = '';
     });
 

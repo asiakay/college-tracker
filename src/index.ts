@@ -520,7 +520,7 @@ export default {
 {
   "title": "Assignment title",
   "due_date": "YYYY-MM-DD or null if not found",
-  "deliverable_type": "one of: Essay, Project, Exam, Quiz, Presentation, Lab, Discussion, Reading, Other",
+  "deliverable_type": "one of: Essay, Exam, Project, Reading, Code, Presentation",
   "weight_pct": 0,
   "notes": "one-sentence description of the assignment, or null"
 }`;
@@ -557,10 +557,15 @@ export default {
         return new Response(JSON.stringify({ error: `Failed to parse assignment: ${(e as Error).message}` }), { status: 502, headers: CORS });
       }
 
+      const PA_VALID = new Set(["Essay", "Exam", "Project", "Reading", "Code", "Presentation"]);
+      const PA_REMAP: Record<string, string> = { Quiz: "Exam", Lab: "Project", Discussion: "Reading", Other: "Essay" };
+      const rawPaType = paParsed.deliverable_type ?? "";
+      const paDeliverableType = PA_VALID.has(rawPaType) ? rawPaType : (PA_REMAP[rawPaType] ?? "Essay");
+
       return new Response(JSON.stringify({
         title: paParsed.title ?? null,
         due_date: paParsed.due_date ?? null,
-        deliverable_type: paParsed.deliverable_type ?? "Other",
+        deliverable_type: paDeliverableType,
         weight_pct: paParsed.weight_pct ?? 0,
         notes: paParsed.notes ?? null,
       }), { headers: CORS });
@@ -691,10 +696,11 @@ export default {
       catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
       const invalid422 = (msg: string) =>
         new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
-      const { id, course_id, okr_id, title, due_date,
+      const { id, course_id, okr_id, title, due_date: rawDueDate,
               deliverable_type = "Project", weight_pct = 0, notes = null } = body as Record<string, unknown>;
       if (!id || !course_id || !okr_id || !title)
         return invalid422("id, course_id, okr_id, and title are required");
+      const due_date = (typeof rawDueDate === "string" && rawDueDate) ? rawDueDate : new Date().toISOString().split("T")[0];
       const asnCourse = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(course_id).first();
       if (!asnCourse) return invalid422(`Course '${course_id}' not found`);
       const asnOkr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();

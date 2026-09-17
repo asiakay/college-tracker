@@ -637,6 +637,43 @@ export default {
       return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
     }
 
+    // POST /api/assignments/:id/generate-tasks (open — no write token needed)
+    const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
+    if (genTasksMatch && request.method === "POST") {
+      const assignmentId = genTasksMatch[1];
+      const asnRow = await env.DB.prepare(
+        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,
+                c.name AS course_name, c.notes AS course_notes
+         FROM assignments a JOIN courses c ON c.id = a.course_id
+         WHERE a.id = ?`
+      ).bind(assignmentId).first<{
+        id: string; title: string; due_date: string | null;
+        deliverable_type: string; weight_pct: number; okr_id: string;
+        course_name: string; course_notes: string | null;
+      }>();
+      if (!asnRow) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
+      if (!env.ANTHROPIC_API_KEY)
+        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+      let generated: GeneratedTask[];
+      try {
+        generated = await generateTasksForAssignment(env.ANTHROPIC_API_KEY, asnRow);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Task generation failed: ${e instanceof Error ? e.message : String(e)}` }),
+          { status: 502, headers: CORS }
+        );
+      }
+      const tasks: unknown[] = [];
+      for (const t of generated) {
+        const row = await env.DB.prepare(
+          `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status)
+           VALUES (?, ?, ?, 'college-tracker', ?, 'To Do') RETURNING *`
+        ).bind(t.description, asnRow.okr_id, assignmentId, t.time_spent).first();
+        if (row) tasks.push(row);
+      }
+      return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
+    }
+
     // ── REST: write routes (bearer-token protected) ───────────────────────────
 
     const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
@@ -656,43 +693,6 @@ export default {
 
       const invalid = (msg: string) =>
         new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
-
-      // POST /api/assignments/:id/generate-tasks
-      const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
-      if (genTasksMatch && request.method === "POST") {
-        const assignmentId = genTasksMatch[1];
-        const asnRow = await env.DB.prepare(
-          `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,
-                  c.name AS course_name, c.notes AS course_notes
-           FROM assignments a JOIN courses c ON c.id = a.course_id
-           WHERE a.id = ?`
-        ).bind(assignmentId).first<{
-          id: string; title: string; due_date: string | null;
-          deliverable_type: string; weight_pct: number; okr_id: string;
-          course_name: string; course_notes: string | null;
-        }>();
-        if (!asnRow) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
-        if (!env.ANTHROPIC_API_KEY)
-          return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
-        let generated: GeneratedTask[];
-        try {
-          generated = await generateTasksForAssignment(env.ANTHROPIC_API_KEY, asnRow);
-        } catch (e) {
-          return new Response(
-            JSON.stringify({ error: `Task generation failed: ${e instanceof Error ? e.message : String(e)}` }),
-            { status: 502, headers: CORS }
-          );
-        }
-        const tasks: unknown[] = [];
-        for (const t of generated) {
-          const row = await env.DB.prepare(
-            `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status)
-             VALUES (?, ?, ?, 'college-tracker', ?, 'To Do') RETURNING *`
-          ).bind(t.description, asnRow.okr_id, assignmentId, t.time_spent).first();
-          if (row) tasks.push(row);
-        }
-        return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
-      }
 
       // POST /api/tasks
       if (url.pathname === "/api/tasks" && request.method === "POST") {

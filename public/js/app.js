@@ -263,17 +263,12 @@ function renderDeadlines() {
   // Break down → generate study tasks for an assignment
   tbody.querySelectorAll('.btn-breakdown').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const token = getToken();
-      if (!token) {
-        toast('Save your write token in the Log task drawer first', 'fail');
-        return;
-      }
       btn.textContent = 'Generating…';
       btn.disabled = true;
       try {
         const r = await fetch(`/api/assignments/${encodeURIComponent(btn.dataset.asn)}/generate-tasks`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || r.status);

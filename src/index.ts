@@ -637,9 +637,19 @@ export default {
       return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
     }
 
-    // POST /api/assignments/:id/generate-tasks (open — no write token needed)
+    // POST /api/assignments/:id/generate-tasks
+    // Auth: when MCP_SECRET_TOKEN is set, require either Cloudflare Access
+    // identity header (injected automatically by CF Access in the browser —
+    // the user never types a token) or a Bearer token (API / MCP callers).
     const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
     if (genTasksMatch && request.method === "POST") {
+      if (env.MCP_SECRET_TOKEN) {
+        const cfUser = request.headers.get("Cf-Access-Authenticated-User-Email");
+        const auth  = request.headers.get("Authorization") ?? "";
+        if (!cfUser && auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+        }
+      }
       const assignmentId = genTasksMatch[1];
       const asnRow = await env.DB.prepare(
         `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,

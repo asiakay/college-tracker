@@ -6,7 +6,7 @@ const BASE = '';  // same origin
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 function getToken() {
-  try { return localStorage.getItem('ct_token') || ''; } catch { return ''; }
+  try { return localStorage.getItem('ct_token') || localStorage.getItem('ct_write_token') || ''; } catch { return ''; }
 }
 function setToken(t) {
   try { localStorage.setItem('ct_token', t); } catch {}
@@ -20,6 +20,7 @@ async function api(path, opts = {}) {
   const res = await fetch(BASE + path, { ...opts, headers });
   if (res.status === 401) {
     setToken('');
+    try { localStorage.removeItem('ct_write_token'); } catch {}
     showTokenPrompt();
     throw new Error('Unauthorized');
   }

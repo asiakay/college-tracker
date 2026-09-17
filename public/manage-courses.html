@@ -162,6 +162,26 @@
   .btn-sm.accent:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
   .btn-sm.danger:hover { color: var(--error); border-color: var(--error); background: var(--error-dim); }
 
+  /* ── Notes panel ── */
+  textarea.notes-text {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit; font-size: 13px;
+    padding: 9px 11px; width: 100%;
+    resize: vertical; min-height: 100px;
+    transition: border-color 0.15s;
+  }
+  textarea.notes-text:focus {
+    outline: none; border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+  .notes-hint {
+    font-size: 11px; color: var(--muted); margin-top: 2px;
+  }
+  .chip-notes { background: var(--warn-dim); color: var(--warn); border: 1px solid rgba(246,173,85,0.25); }
+
   /* ── Inline panel (edit or syllabus) ── */
   .inline-panel {
     display: none;
@@ -893,8 +913,11 @@
 
     const creditsChip = c.credits ? `<span class="chip chip-credits">${esc(c.credits)} cr</span>` : '';
     const instructor  = c.instructor ? `<span style="font-size:12px;color:var(--muted)">${esc(c.instructor)}</span>` : '';
+    const notesChip   = c.notes ? `<span class="chip chip-notes" title="${esc(c.notes.slice(0,80))}">📝 notes</span>` : '';
     const editId      = `edit-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const sylId       = `syl-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const notesId     = `notes-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const ntostId     = `ntost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const etostId     = `etost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const stostId     = `stost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const prevId      = `prev-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
@@ -910,12 +933,13 @@
           <div class="course-meta" style="margin-top:4px">
             <span class="chip chip-term">${esc(c.term)}</span>
             <span class="chip chip-okr">${esc(c.okr_id)}</span>
-            ${creditsChip}${instructor}
+            ${creditsChip}${instructor}${notesChip}
           </div>
         </div>
         <div class="course-actions">
           <button class="btn-sm btn-edit" type="button">Edit</button>
           <button class="btn-sm accent btn-syl" type="button">Syllabus</button>
+          <button class="btn-sm btn-notes" type="button">Notes</button>
           <button class="btn-sm danger btn-delete" type="button">Delete</button>
         </div>
       </div>
@@ -974,6 +998,20 @@
           </div>
           <div class="toast" id="ptost-${c.id.replace(/[^a-z0-9]/gi,'_')}"></div>
         </div>
+      </div>
+
+      <!-- Notes panel -->
+      <div class="inline-panel" id="${notesId}">
+        <div class="field">
+          <span class="field-label">Course Notes &amp; Context</span>
+          <textarea class="notes-text" rows="5" placeholder="Add notes, goals, study strategies, professor quirks, grading context — anything that helps Claude generate better tasks for this course…">${esc(c.notes || '')}</textarea>
+          <span class="notes-hint">Saved notes are used as context when Claude auto-generates study tasks for assignments.</span>
+        </div>
+        <div class="panel-actions">
+          <button class="btn-sm btn-cancel-notes" type="button">Cancel</button>
+          <button class="btn-save btn-save-notes" type="button">Save Notes</button>
+        </div>
+        <div class="toast" id="${ntostId}"></div>
       </div>
     `;
 
@@ -1081,6 +1119,54 @@
       item.querySelector(`#${prevId}`).classList.remove('open');
       showToast(ptostId, `Saved ${saved} assignment${saved !== 1 ? 's' : ''}${failed ? ` (${failed} failed)` : ''}`, failed ? 'error' : 'success');
       btn.disabled = false; btn.textContent = 'Save assignments';
+    });
+
+    // ── Notes ──
+    const notesPanel = item.querySelector(`#${notesId}`);
+    item.querySelector('.btn-notes').addEventListener('click', () => {
+      const open = notesPanel.classList.toggle('open');
+      item.querySelector('.btn-notes').textContent = open ? 'Close' : 'Notes';
+      editPanel.classList.remove('open');
+      item.querySelector('.btn-edit').textContent = 'Edit';
+      sylPanel.classList.remove('open');
+      item.querySelector('.btn-syl').textContent = 'Syllabus';
+    });
+    item.querySelector('.btn-cancel-notes').addEventListener('click', () => {
+      notesPanel.classList.remove('open');
+      item.querySelector('.btn-notes').textContent = 'Notes';
+    });
+    item.querySelector('.btn-save-notes').addEventListener('click', async () => {
+      const btn = item.querySelector('.btn-save-notes');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      const notes = item.querySelector('.notes-text').value.trim() || null;
+      try {
+        const r = await fetch(`${WORKER}/api/courses/${encodeURIComponent(c.id)}`, {
+          method: 'PUT', headers: authHeaders(), body: JSON.stringify({ notes }),
+        });
+        const d = await r.json();
+        if (d.course) {
+          showToast(ntostId, 'Notes saved', 'success');
+          // Update notes chip in the meta row without full reload
+          const meta = item.querySelector('.course-meta');
+          const existing = meta.querySelector('.chip-notes');
+          if (notes) {
+            if (existing) { existing.title = notes.slice(0, 80); }
+            else {
+              const chip = document.createElement('span');
+              chip.className = 'chip chip-notes';
+              chip.title = notes.slice(0, 80);
+              chip.textContent = '📝 notes';
+              meta.appendChild(chip);
+            }
+          } else if (existing) {
+            existing.remove();
+          }
+          c.notes = notes;
+        } else {
+          showToast(ntostId, `Error: ${d.error || JSON.stringify(d)}`, 'error');
+        }
+      } catch (e) { showToast(ntostId, `Network error: ${e.message}`, 'error'); }
+      btn.disabled = false; btn.textContent = 'Save Notes';
     });
 
     // ── Delete ──

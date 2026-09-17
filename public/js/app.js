@@ -20,6 +20,7 @@ async function api(path, opts = {}) {
   const res = await fetch(BASE + path, { ...opts, headers });
   if (res.status === 401) {
     setToken('');
+    try { localStorage.removeItem('ct_write_token'); } catch {}
     showTokenPrompt();
     throw new Error('Unauthorized');
   }

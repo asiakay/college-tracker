@@ -375,13 +375,13 @@
   <div class="card-header">Add Course</div>
   <form class="add-form" id="addForm">
 
-    <!-- Fill from syllabus (optional) -->
+    <!-- Import from syllabus (optional) -->
     <div>
       <button type="button" class="optional-toggle" id="ciToggle">
         <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
           <path d="M2 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        Fill from syllabus
+        Import from syllabus
       </button>
       <div class="optional-fields" id="ciFields">
         <div style="margin-top:8px">
@@ -394,6 +394,7 @@
           <div class="syl-or">— or paste text —</div>
           <textarea class="syl-text" id="ciText" rows="4" placeholder="Paste syllabus text (20+ characters)"></textarea>
           <button type="button" class="btn-save" id="ciExtract" style="margin-top:8px;width:100%">Extract course info →</button>
+          <p class="optional-hint" style="margin:6px 0 0;font-size:12px;color:var(--muted)">Course fields pre-fill immediately. Assignments are imported when you submit the form.</p>
           <div class="toast" id="ciToast"></div>
         </div>
       </div>
@@ -426,28 +427,6 @@
     <div class="field">
       <label for="addCredits">Credits</label>
       <input type="number" id="addCredits" placeholder="e.g. 3" min="1" max="12">
-    </div>
-
-    <!-- Attach Syllabus (optional) -->
-    <div>
-      <button type="button" class="optional-toggle" id="sylToggle">
-        <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
-          <path d="M2 2l4 3-4 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        Attach Syllabus
-      </button>
-      <div class="optional-fields" id="sylFields">
-        <div style="margin-top:8px">
-          <div class="drop-zone" id="addDropZone">
-            <input type="file" id="addSylFile" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-            <span class="dz-icon">📄</span>
-            <div>Drop a PDF or Word doc here or <strong>tap to browse</strong></div>
-            <div id="addFileChosen" class="file-chosen" hidden></div>
-          </div>
-          <div class="syl-or">— or paste text —</div>
-          <textarea class="syl-text" id="addSylText" rows="4" placeholder="Paste syllabus text (20+ characters)"></textarea>
-        </div>
-      </div>
     </div>
 
     <div>
@@ -596,7 +575,6 @@
     });
   }
   bindToggle('optToggle', 'optFields');
-  bindToggle('sylToggle', 'sylFields');
   bindToggle('ciToggle', 'ciFields');
 
   // ── Drop zone (Fill from syllabus) ────────────────────────────────────────
@@ -675,23 +653,6 @@
     }
     btn.disabled = false;
     btn.textContent = 'Extract course info →';
-  });
-
-  // ── Drop zone (Add form) ───────────────────────────────────────────────────
-  const addDropZone = document.getElementById('addDropZone');
-  const addSylFile  = document.getElementById('addSylFile');
-  const addFileChosen = document.getElementById('addFileChosen');
-
-  addDropZone.addEventListener('click', () => addSylFile.click());
-  addDropZone.addEventListener('dragover', e => { e.preventDefault(); addDropZone.classList.add('over'); });
-  addDropZone.addEventListener('dragleave', () => addDropZone.classList.remove('over'));
-  addDropZone.addEventListener('drop', e => {
-    e.preventDefault(); addDropZone.classList.remove('over');
-    const f = e.dataTransfer.files[0];
-    if (f) { addSylFile.files = e.dataTransfer.files; showFileChosen(addFileChosen, f.name); }
-  });
-  addSylFile.addEventListener('change', () => {
-    if (addSylFile.files[0]) showFileChosen(addFileChosen, addSylFile.files[0].name);
   });
 
   function showFileChosen(el, name) {
@@ -818,8 +779,8 @@
     const term       = document.getElementById('addTerm').value.trim();
     const credits    = document.getElementById('addCredits').value;
     const instructor = document.getElementById('addInstructor').value.trim();
-    const sylFile    = addSylFile.files[0] || ciFileInput.files[0] || null;
-    const sylText    = document.getElementById('addSylText').value || document.getElementById('ciText').value;
+    const sylFile    = ciFileInput.files[0] || null;
+    const sylText    = document.getElementById('ciText').value;
 
     if (okr_id === '__new__' || !okr_id) {
       const derivedOkrId = 'EDU-' + id;
@@ -866,9 +827,6 @@
       document.getElementById('addId').value = '';
       document.getElementById('addCredits').value = '';
       document.getElementById('addInstructor').value = '';
-      document.getElementById('addSylText').value = '';
-      addSylFile.value = '';
-      addFileChosen.hidden = true;
       autoId = true;
 
       // Parse syllabus if provided

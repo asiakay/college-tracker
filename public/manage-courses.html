@@ -476,15 +476,23 @@
 
   // ── Token persistence ─────────────────────────────────────────────────────
   const tokenField = document.getElementById('addToken');
-  try { tokenField.value = localStorage.getItem('ct_write_token') || ''; } catch (_) {}
+  // migrate from old key so tokens set before this fix still work
+  try {
+    const old = localStorage.getItem('ct_write_token');
+    if (old && !localStorage.getItem('ct_token')) {
+      localStorage.setItem('ct_token', old);
+      localStorage.removeItem('ct_write_token');
+    }
+  } catch (_) {}
+  try { tokenField.value = localStorage.getItem('ct_token') || ''; } catch (_) {}
   tokenField.addEventListener('input', () => {
-    try { localStorage.setItem('ct_write_token', tokenField.value); } catch (_) {}
+    try { localStorage.setItem('ct_token', tokenField.value); } catch (_) {}
   });
 
   function getToken() {
     const field = (document.getElementById('addToken').value || '').trim();
     if (field) return field;
-    try { return localStorage.getItem('ct_write_token') || ''; } catch (_) { return ''; }
+    try { return localStorage.getItem('ct_token') || ''; } catch (_) { return ''; }
   }
 
   function authHeaders(extra = {}) {

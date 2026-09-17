@@ -6,7 +6,7 @@ const BASE = '';  // same origin
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 function getToken() {
-  try { return localStorage.getItem('ct_token') || ''; } catch { return ''; }
+  try { return localStorage.getItem('ct_token') || localStorage.getItem('ct_write_token') || ''; } catch { return ''; }
 }
 function setToken(t) {
   try { localStorage.setItem('ct_token', t); } catch {}

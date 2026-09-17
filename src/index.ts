@@ -645,8 +645,9 @@ export default {
     if (genTasksMatch && request.method === "POST") {
       if (env.MCP_SECRET_TOKEN) {
         const cfUser = request.headers.get("Cf-Access-Authenticated-User-Email");
-        const auth  = request.headers.get("Authorization") ?? "";
-        if (!cfUser && auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
+        const cfJwt  = request.headers.get("Cf-Access-Jwt-Assertion");
+        const auth   = request.headers.get("Authorization") ?? "";
+        if (!(cfUser && cfJwt) && auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
           return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
         }
       }

@@ -917,6 +917,11 @@
     const editId      = `edit-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const sylId       = `syl-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const notesId     = `notes-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const asnId       = `asn-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const asnTostId   = `atost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const asnDropId   = `adrop-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const asnFileId   = `afile-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
+    const asnFcId     = `afc-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const ntostId     = `ntost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const etostId     = `etost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
     const stostId     = `stost-${c.id.replace(/[^a-z0-9]/gi,'_')}`;
@@ -939,6 +944,7 @@
         <div class="course-actions">
           <button class="btn-sm btn-edit" type="button">Edit</button>
           <button class="btn-sm accent btn-syl" type="button">Syllabus</button>
+          <button class="btn-sm btn-asn" type="button">+ Assignment</button>
           <button class="btn-sm btn-notes" type="button">Notes</button>
           <button class="btn-sm danger btn-delete" type="button">Delete</button>
         </div>
@@ -1000,6 +1006,46 @@
         </div>
       </div>
 
+      <!-- Add Assignment panel -->
+      <div class="inline-panel" id="${asnId}">
+        <div class="drop-zone" id="${asnDropId}">
+          <input type="file" id="${asnFileId}" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <span class="dz-icon">📄</span>
+          <div>Drop a PDF or Word doc here or <strong>tap to browse</strong></div>
+          <div id="${asnFcId}" class="file-chosen" hidden></div>
+        </div>
+        <div class="syl-or">— or paste text —</div>
+        <textarea class="syl-text asn-paste" rows="3" placeholder="Paste assignment description (20+ characters)"></textarea>
+        <button class="btn-save btn-asn-parse" type="button" style="width:100%;margin-bottom:4px">Parse assignment →</button>
+        <button class="btn-sm btn-asn-manual" type="button" style="width:100%;margin-bottom:8px">Enter manually →</button>
+
+        <div class="asn-fields" style="display:none">
+          <div class="edit-row">
+            <div class="field" style="flex:2"><span class="field-label">Title</span>
+              <input type="text" class="asn-title" placeholder="Assignment title"></div>
+            <div class="field"><span class="field-label">Due date</span>
+              <input type="date" class="asn-due"></div>
+          </div>
+          <div class="edit-row">
+            <div class="field"><span class="field-label">Type</span>
+              <select class="asn-type">
+                <option>Essay</option><option>Exam</option><option>Project</option>
+                <option>Reading</option><option>Code</option><option>Presentation</option>
+              </select></div>
+            <div class="field"><span class="field-label">Weight %</span>
+              <input type="number" class="asn-weight" min="0" max="100" value="0"></div>
+          </div>
+          <div class="field"><span class="field-label">Notes</span>
+            <input type="text" class="asn-notes" placeholder="Optional description"></div>
+        </div>
+
+        <div class="panel-actions">
+          <button class="btn-sm btn-cancel-asn" type="button">Cancel</button>
+          <button class="btn-save btn-save-asn" type="button" style="display:none">Save assignment</button>
+        </div>
+        <div class="toast" id="${asnTostId}"></div>
+      </div>
+
       <!-- Notes panel -->
       <div class="inline-panel" id="${notesId}">
         <div class="field">
@@ -1031,6 +1077,8 @@
       const open = editPanel.classList.toggle('open');
       item.querySelector('.btn-edit').textContent = open ? 'Close' : 'Edit';
       item.querySelector(`#${sylId}`).classList.remove('open');
+      item.querySelector(`#${asnId}`).classList.remove('open');
+      item.querySelector('.btn-asn').textContent = '+ Assignment';
     });
     item.querySelector('.btn-cancel-edit').addEventListener('click', () => {
       editPanel.classList.remove('open');
@@ -1072,6 +1120,8 @@
       item.querySelector('.btn-syl').textContent = open ? 'Close' : 'Syllabus';
       editPanel.classList.remove('open');
       item.querySelector('.btn-edit').textContent = 'Edit';
+      item.querySelector(`#${asnId}`).classList.remove('open');
+      item.querySelector('.btn-asn').textContent = '+ Assignment';
     });
     item.querySelector('.btn-cancel-syl').addEventListener('click', () => {
       sylPanel.classList.remove('open');
@@ -1184,6 +1234,8 @@
       item.querySelector('.btn-edit').textContent = 'Edit';
       sylPanel.classList.remove('open');
       item.querySelector('.btn-syl').textContent = 'Syllabus';
+      item.querySelector(`#${asnId}`).classList.remove('open');
+      item.querySelector('.btn-asn').textContent = '+ Assignment';
     });
     item.querySelector('.btn-cancel-notes').addEventListener('click', () => {
       notesPanel.classList.remove('open');
@@ -1221,6 +1273,127 @@
         }
       } catch (e) { showToast(ntostId, `Network error: ${e.message}`, 'error'); }
       btn.disabled = false; btn.textContent = 'Save Notes';
+    });
+
+    // ── Add Assignment ──
+    const asnPanel    = item.querySelector(`#${asnId}`);
+    const asnDropZone = item.querySelector(`#${asnDropId}`);
+    const asnFileInp  = item.querySelector(`#${asnFileId}`);
+    const asnFcEl     = item.querySelector(`#${asnFcId}`);
+    const asnFields   = asnPanel.querySelector('.asn-fields');
+    const asnSaveBtn  = asnPanel.querySelector('.btn-save-asn');
+
+    item.querySelector('.btn-asn').addEventListener('click', () => {
+      const open = asnPanel.classList.toggle('open');
+      item.querySelector('.btn-asn').textContent = open ? 'Close' : '+ Assignment';
+      editPanel.classList.remove('open');
+      item.querySelector('.btn-edit').textContent = 'Edit';
+      item.querySelector(`#${sylId}`).classList.remove('open');
+      item.querySelector('.btn-syl').textContent = 'Syllabus';
+      item.querySelector(`#${notesId}`).classList.remove('open');
+      item.querySelector('.btn-notes').textContent = 'Notes';
+    });
+    item.querySelector('.btn-cancel-asn').addEventListener('click', () => {
+      asnPanel.classList.remove('open');
+      item.querySelector('.btn-asn').textContent = '+ Assignment';
+    });
+
+    // Drop zone
+    asnDropZone.addEventListener('click', () => asnFileInp.click());
+    asnDropZone.addEventListener('dragover', e => { e.preventDefault(); asnDropZone.classList.add('drag-over'); });
+    asnDropZone.addEventListener('dragleave', () => asnDropZone.classList.remove('drag-over'));
+    asnDropZone.addEventListener('drop', e => {
+      e.preventDefault(); asnDropZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0]; if (!f) return;
+      asnFileInp._file = f;
+      asnFcEl.textContent = `✓ ${f.name}`; asnFcEl.hidden = false;
+    });
+    asnFileInp.addEventListener('change', () => {
+      const f = asnFileInp.files[0]; if (!f) return;
+      asnFileInp._file = null; // clear any prior drag-dropped file
+      asnFcEl.textContent = `✓ ${f.name}`; asnFcEl.hidden = false;
+    });
+
+    asnPanel.querySelector('.btn-asn-parse').addEventListener('click', async () => {
+      const parseBtn = asnPanel.querySelector('.btn-asn-parse');
+      const pasteText = asnPanel.querySelector('.asn-paste').value.trim();
+      const file = asnFileInp._file || asnFileInp.files[0] || null;
+      if (!file && pasteText.length < 20) {
+        showToast(asnTostId, 'Provide a file or at least 20 characters of text', 'error'); return;
+      }
+      parseBtn.disabled = true; parseBtn.textContent = 'Parsing…';
+      try {
+        const body = {};
+        if (file) {
+          const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name?.endsWith('.docx');
+          if (isDocx) { body.text = await docxToText(file); }
+          else { body.file_base64 = await fileToBase64(file); body.file_type = file.type || 'application/pdf'; }
+        } else { body.text = pasteText; }
+        const r = await fetch(`${WORKER}/api/parse-assignment`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        if (d.title) asnPanel.querySelector('.asn-title').value = d.title;
+        if (d.due_date) asnPanel.querySelector('.asn-due').value = d.due_date;
+        if (d.deliverable_type) {
+          const sel = asnPanel.querySelector('.asn-type');
+          const opt = [...sel.options].find(o => o.value === d.deliverable_type);
+          if (opt) sel.value = d.deliverable_type;
+        }
+        if (d.weight_pct != null) asnPanel.querySelector('.asn-weight').value = d.weight_pct;
+        if (d.notes) asnPanel.querySelector('.asn-notes').value = d.notes;
+        asnFields.style.display = '';
+        asnSaveBtn.style.display = '';
+        showToast(asnTostId, 'Assignment details extracted — review and save', 'success');
+      } catch (e) {
+        showToast(asnTostId, `Parse failed: ${e.message}`, 'error');
+      } finally {
+        parseBtn.disabled = false; parseBtn.textContent = 'Parse assignment →';
+      }
+    });
+
+    asnPanel.querySelector('.btn-asn-manual').addEventListener('click', () => {
+      asnFields.style.display = ''; asnSaveBtn.style.display = '';
+    });
+
+    asnPanel.querySelector('.btn-save-asn').addEventListener('click', async () => {
+      const title = asnPanel.querySelector('.asn-title').value.trim();
+      if (!title) { showToast(asnTostId, 'Title is required', 'error'); return; }
+      const saveBtn = asnPanel.querySelector('.btn-save-asn');
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+      try {
+        const asnId2 = `${c.id}-${title.slice(0,30).replace(/[^a-z0-9]/gi,'-').toLowerCase()}-${Date.now()}`;
+        const payload = {
+          id: asnId2,
+          course_id: c.id,
+          okr_id: c.okr_id,
+          title,
+          due_date: asnPanel.querySelector('.asn-due').value || null,
+          deliverable_type: asnPanel.querySelector('.asn-type').value,
+          weight_pct: Number(asnPanel.querySelector('.asn-weight').value) || 0,
+          notes: asnPanel.querySelector('.asn-notes').value.trim() || null,
+        };
+        const r = await fetch(`${WORKER}/api/assignments`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || r.status);
+        showToast(asnTostId, `"${title}" saved`, 'success');
+        // reset form
+        asnPanel.querySelector('.asn-title').value = '';
+        asnPanel.querySelector('.asn-due').value = '';
+        asnPanel.querySelector('.asn-weight').value = '0';
+        asnPanel.querySelector('.asn-notes').value = '';
+        asnPanel.querySelector('.asn-paste').value = '';
+        asnFcEl.hidden = true; asnFcEl.textContent = '';
+        asnFileInp.value = ''; asnFileInp._file = null;
+        asnFields.style.display = 'none'; asnSaveBtn.style.display = 'none';
+      } catch (e) {
+        showToast(asnTostId, `Save failed: ${e.message}`, 'error');
+      } finally {
+        saveBtn.disabled = false; saveBtn.textContent = 'Save assignment';
+      }
     });
 
     // ── Delete ──

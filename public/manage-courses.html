@@ -1004,8 +1004,15 @@
       <div class="inline-panel" id="${notesId}">
         <div class="field">
           <span class="field-label">Course Notes &amp; Context</span>
+          <div class="drop-zone notes-drop" id="ndrop-${c.id.replace(/[^a-z0-9]/gi,'_')}">
+            <input type="file" class="notes-file-input" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            <span class="dz-icon">📎</span>
+            <div>Drop a PDF or Word doc to append its text, or <strong>tap to browse</strong></div>
+            <div class="notes-file-chosen file-chosen" hidden></div>
+          </div>
+          <div class="syl-or">— or type directly —</div>
           <textarea class="notes-text" rows="5" placeholder="Add notes, goals, study strategies, professor quirks, grading context — anything that helps Claude generate better tasks for this course…">${esc(c.notes || '')}</textarea>
-          <span class="notes-hint">Saved notes are used as context when Claude auto-generates study tasks for assignments.</span>
+          <span class="notes-hint">Text extracted from uploaded files is appended here. Saved notes feed Claude when auto-generating study tasks.</span>
         </div>
         <div class="panel-actions">
           <button class="btn-sm btn-cancel-notes" type="button">Cancel</button>
@@ -1123,6 +1130,53 @@
 
     // ── Notes ──
     const notesPanel = item.querySelector(`#${notesId}`);
+    const notesDropZone  = item.querySelector('.notes-drop');
+    const notesFileInput = item.querySelector('.notes-file-input');
+    const notesFileChosen = item.querySelector('.notes-file-chosen');
+    const notesTextarea  = item.querySelector('.notes-text');
+
+    async function extractAndAppend(file) {
+      showToast(ntostId, 'Extracting text…', 'info');
+      try {
+        let extracted = '';
+        const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    || file.name?.endsWith('.docx');
+        if (isDocx) {
+          const buf = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer: buf });
+          extracted = result.value;
+        } else {
+          const b64 = await fileToBase64(file);
+          const r = await fetch(`${WORKER}/api/extract-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_base64: b64, file_type: file.type || 'application/pdf' }),
+          });
+          const d = await r.json();
+          if (d.error) throw new Error(d.error);
+          extracted = d.text || '';
+        }
+        const current = notesTextarea.value.trim();
+        notesTextarea.value = current ? current + '\n\n' + extracted : extracted;
+        showToast(ntostId, 'Text appended — review and save', 'success');
+      } catch (e) {
+        showToast(ntostId, `Extract failed: ${e.message}`, 'error');
+      }
+    }
+
+    notesDropZone.addEventListener('click', () => notesFileInput.click());
+    notesDropZone.addEventListener('dragover', e => { e.preventDefault(); notesDropZone.classList.add('over'); });
+    notesDropZone.addEventListener('dragleave', () => notesDropZone.classList.remove('over'));
+    notesDropZone.addEventListener('drop', async e => {
+      e.preventDefault(); notesDropZone.classList.remove('over');
+      const f = e.dataTransfer.files[0];
+      if (f) { showFileChosen(notesFileChosen, f.name); await extractAndAppend(f); }
+    });
+    notesFileInput.addEventListener('change', async () => {
+      const f = notesFileInput.files[0];
+      if (f) { showFileChosen(notesFileChosen, f.name); await extractAndAppend(f); }
+    });
+
     item.querySelector('.btn-notes').addEventListener('click', () => {
       const open = notesPanel.classList.toggle('open');
       item.querySelector('.btn-notes').textContent = open ? 'Close' : 'Notes';

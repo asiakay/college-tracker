@@ -497,6 +497,54 @@ export default {
       }), { headers: CORS });
     }
 
+    // ── extract-text: pull raw text from a PDF or plain text (no auth) ─────────
+    if (url.pathname === "/api/extract-text" && request.method === "POST") {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+
+      const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
+      const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
+      const hasText = text && typeof text === "string" && text.trim().length > 0;
+
+      if (!hasFile && !hasText)
+        return new Response(JSON.stringify({ error: "Provide file_base64 or text" }), { status: 422, headers: CORS });
+
+      if (!env.ANTHROPIC_API_KEY)
+        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+
+      if (!hasFile) {
+        return new Response(JSON.stringify({ text: (text as string).trim() }), { headers: CORS });
+      }
+
+      const userContent: unknown[] = [
+        { type: "document", source: { type: "base64", media_type: file_type || "application/pdf", data: file_base64 } },
+        { type: "text", text: "Extract all readable text from this document. Return only the raw extracted text — no commentary, no formatting markers, no preamble." },
+      ];
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "pdfs-2024-09-25",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 4096,
+          messages: [{ role: "user", content: userContent }],
+        }),
+      });
+
+      if (!resp.ok)
+        return new Response(JSON.stringify({ error: `Anthropic API ${resp.status}` }), { status: 502, headers: CORS });
+
+      const data = await resp.json() as { content: Array<{ type: string; text: string }> };
+      const extracted = data.content.find(c => c.type === "text")?.text?.trim() ?? "";
+      return new Response(JSON.stringify({ text: extracted }), { headers: CORS });
+    }
+
     // ── parse-syllabus (public POST — no auth required) ──────────────────────
 
     const parseSylMatch = url.pathname.match(/^\/api\/courses\/([^/]+)\/parse-syllabus$/);

@@ -497,6 +497,75 @@ export default {
       }), { headers: CORS });
     }
 
+    // ── parse-assignment (public POST — no auth required) ──────────────────────
+    if (url.pathname === "/api/parse-assignment" && request.method === "POST") {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+
+      const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
+      const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
+      const hasText = text && typeof text === "string" && text.trim().length >= 20;
+      if (!hasFile && !hasText) {
+        return new Response(
+          JSON.stringify({ error: "Provide a PDF, Word doc, or at least 20 characters of text" }),
+          { status: 422, headers: CORS }
+        );
+      }
+      if (!env.ANTHROPIC_API_KEY) {
+        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+      }
+
+      const paInstruction = `Extract the graded assignment details from this document. Return ONLY valid JSON with no markdown fences or explanation:
+{
+  "title": "Assignment title",
+  "due_date": "YYYY-MM-DD or null if not found",
+  "deliverable_type": "one of: Essay, Project, Exam, Quiz, Presentation, Lab, Discussion, Reading, Other",
+  "weight_pct": 0,
+  "notes": "one-sentence description of the assignment, or null"
+}`;
+
+      const paContent: unknown[] = hasFile
+        ? [
+            { type: "document", source: { type: "base64", media_type: file_type || "application/pdf", data: file_base64 } },
+            { type: "text", text: paInstruction },
+          ]
+        : [{ type: "text", text: `${paInstruction}\n\nDocument:\n${(text!).slice(0, 40000)}` }];
+
+      let paParsed: { title?: string; due_date?: string | null; deliverable_type?: string; weight_pct?: number; notes?: string | null };
+      try {
+        const paResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "pdfs-2024-09-25",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 512,
+            messages: [{ role: "user", content: paContent }],
+          }),
+        });
+        if (!paResp.ok) throw new Error(`Anthropic API ${paResp.status}: ${await paResp.text()}`);
+        const paData = await paResp.json() as { content: Array<{ type: string; text: string }> };
+        const paRaw = paData.content.find(c => c.type === "text")?.text ?? "{}";
+        const paJson = paRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+        paParsed = JSON.parse(paJson);
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `Failed to parse assignment: ${(e as Error).message}` }), { status: 502, headers: CORS });
+      }
+
+      return new Response(JSON.stringify({
+        title: paParsed.title ?? null,
+        due_date: paParsed.due_date ?? null,
+        deliverable_type: paParsed.deliverable_type ?? "Other",
+        weight_pct: paParsed.weight_pct ?? 0,
+        notes: paParsed.notes ?? null,
+      }), { headers: CORS });
+    }
+
     // ── extract-text: pull raw text from a PDF or plain text (no auth) ─────────
     if (url.pathname === "/api/extract-text" && request.method === "POST") {
       let body: Record<string, unknown>;

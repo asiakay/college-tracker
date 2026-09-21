@@ -263,17 +263,12 @@ function renderDeadlines() {
   // Break down → generate study tasks for an assignment
   tbody.querySelectorAll('.btn-breakdown').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const token = getToken();
-      if (!token) {
-        toast('Save your write token in the Log task drawer first', 'fail');
-        return;
-      }
       btn.textContent = 'Generating…';
       btn.disabled = true;
       try {
         const r = await fetch(`/api/assignments/${encodeURIComponent(btn.dataset.asn)}/generate-tasks`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || r.status);
@@ -472,11 +467,14 @@ function renderCourses() {
 
 // ── OKR PROGRESS ──────────────────────────────────────────────────────────
 async function loadProgress() {
-  const data = await get('/api/progress').catch(() => ({ progress: [] }));
-  renderProgress(data.progress || []);
+  const [prog, asns] = await Promise.all([
+    get('/api/progress?category=education').catch(() => ({ progress: [] })),
+    get('/api/assignments').catch(() => ({ assignments: [] })),
+  ]);
+  renderProgress(prog.progress || [], asns.assignments || []);
 }
 
-function renderProgress(rows) {
+function renderProgress(rows, assignments = []) {
   const el = document.getElementById('progress-list');
   if (!rows.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">🎯</div>No OKRs found.</div>`;
@@ -490,6 +488,17 @@ function renderProgress(rows) {
     const taskFrac = r.total_micro_tasks
       ? `${r.completed_micro_tasks || 0}/${r.total_micro_tasks}`
       : '—';
+    const myAsns = assignments.filter(a => a.okr_id === r.okr_id)
+      .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+    const asnListHtml = myAsns.length
+      ? myAsns.map(a => `
+          <div class="course-asn-item">
+            ${statusChip(a.status)}
+            <span class="course-asn-title">${esc(a.title)}</span>
+            ${a.due_date ? `<span class="course-asn-due">${fmt(a.due_date)}</span>` : ''}
+            ${a.weight_pct ? `<span class="course-asn-due">${a.weight_pct}%</span>` : ''}
+          </div>`).join('')
+      : `<div style="font-size:12px;color:var(--ink-low);padding:6px 0;">No assignments yet — import a syllabus or add one from the Courses tab.</div>`;
     return `<div class="okr-row">
       <div class="okr-row-header">
         <div>
@@ -506,6 +515,7 @@ function renderProgress(rows) {
         ${r.target_date ? `<span>Target: <strong class="mono">${fmt(r.target_date)}</strong></span>` : ''}
         ${r.milestone_status ? statusChip(r.milestone_status) : ''}
       </div>
+      <div class="course-asn-list">${asnListHtml}</div>
     </div>`;
   }).join('');
 

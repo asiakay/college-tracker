@@ -338,7 +338,7 @@ export default {
     if (url.pathname === "/api/deadlines" && request.method === "GET") {
       const days = Math.min(Number(url.searchParams.get("days") ?? 14), 365);
       const { results } = await env.DB.prepare(
-        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes,
+        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes, a.blocker,
                 a.course_id, a.okr_id,
                 c.name AS course_name, c.term,
                 o.objective, o.key_result
@@ -497,8 +497,8 @@ export default {
       }), { headers: CORS });
     }
 
-    // ── parse-assignment-doc: extract structured fields from one assignment doc ──
-    if (url.pathname === "/api/parse-assignment-doc" && request.method === "POST") {
+    // ── parse-assignment-doc / parse-assignment (public POST — no auth) ──────────
+    if ((url.pathname === "/api/parse-assignment-doc" || url.pathname === "/api/parse-assignment") && request.method === "POST") {
       let body: Record<string, unknown>;
       try { body = await request.json() as Record<string, unknown>; }
       catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
@@ -506,59 +506,69 @@ export default {
       const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
       const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
       const hasText = text && typeof text === "string" && text.trim().length >= 10;
-      if (!hasFile && !hasText)
-        return new Response(JSON.stringify({ error: "Provide file_base64 or text" }), { status: 422, headers: CORS });
-
-      if (!env.ANTHROPIC_API_KEY)
+      if (!hasFile && !hasText) {
+        return new Response(
+          JSON.stringify({ error: "Provide a PDF, Word doc, or at least 10 characters of text" }),
+          { status: 422, headers: CORS }
+        );
+      }
+      if (!env.ANTHROPIC_API_KEY) {
         return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+      }
 
-      const instruction = `Extract the assignment details from this document. Return ONLY valid JSON — no markdown, no explanation, no code fences:
+      const paInstruction = `Extract the graded assignment details from this document. Return ONLY valid JSON with no markdown fences or explanation:
 {
-  "title": "assignment title (required)",
+  "title": "Assignment title",
   "due_date": "YYYY-MM-DD or null if not found",
-  "deliverable_type": "one of: Exam | Essay | Project | Reading | Code | Presentation",
-  "weight_pct": "number — percentage of final grade, 0 if not found"
+  "deliverable_type": "one of: Essay, Exam, Project, Reading, Code, Presentation",
+  "weight_pct": 0,
+  "notes": "one-sentence description of the assignment, or null"
 }
 Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/exercise → Code; paper/report/reflection/essay → Essay; project/capstone/portfolio → Project; reading/chapter → Reading; presentation/demo/talk → Presentation.`;
 
-      const userContent: unknown[] = hasFile
+      const paContent: unknown[] = hasFile
         ? [
             { type: "document", source: { type: "base64", media_type: file_type || "application/pdf", data: file_base64 } },
-            { type: "text", text: instruction },
+            { type: "text", text: paInstruction },
           ]
-        : [{ type: "text", text: `${instruction}\n\nDocument text:\n${(text as string).slice(0, 20000)}` }];
+        : [{ type: "text", text: `${paInstruction}\n\nDocument:\n${(text!).slice(0, 40000)}` }];
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "pdfs-2024-09-25",
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 512,
-          messages: [{ role: "user", content: userContent }],
-        }),
-      });
+      let paParsed: { title?: string; due_date?: string | null; deliverable_type?: string; weight_pct?: number; notes?: string | null };
+      try {
+        const paResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "pdfs-2024-09-25",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 512,
+            messages: [{ role: "user", content: paContent }],
+          }),
+        });
+        if (!paResp.ok) throw new Error(`Anthropic API ${paResp.status}: ${await paResp.text()}`);
+        const paData = await paResp.json() as { content: Array<{ type: string; text: string }> };
+        const paRaw = paData.content.find(c => c.type === "text")?.text ?? "{}";
+        const paJson = paRaw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+        paParsed = JSON.parse(paJson);
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `Failed to parse assignment: ${(e as Error).message}` }), { status: 502, headers: CORS });
+      }
 
-      if (!resp.ok)
-        return new Response(JSON.stringify({ error: `Anthropic API ${resp.status}` }), { status: 502, headers: CORS });
+      const PA_VALID = new Set(["Essay", "Exam", "Project", "Reading", "Code", "Presentation"]);
+      const PA_REMAP: Record<string, string> = { Quiz: "Exam", Lab: "Project", Discussion: "Reading", Other: "Essay" };
+      const rawPaType = paParsed.deliverable_type ?? "";
+      const paDeliverableType = PA_VALID.has(rawPaType) ? rawPaType : (PA_REMAP[rawPaType] ?? "Essay");
 
-      const asnData2 = await resp.json() as { content: Array<{ type: string; text: string }> };
-      const raw2 = asnData2.content.find(c => c.type === "text")?.text?.trim() ?? "{}";
-      const json2 = raw2.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      let parsedAsn: { title?: string; due_date?: string | null; deliverable_type?: string; weight_pct?: number };
-      try { parsedAsn = JSON.parse(json2); }
-      catch { return new Response(JSON.stringify({ error: "Model response could not be parsed" }), { status: 502, headers: CORS }); }
-
-      const VALID_ASN_TYPES = new Set(["Essay","Exam","Project","Reading","Code","Presentation"]);
       return new Response(JSON.stringify({
-        title: parsedAsn.title ?? "",
-        due_date: parsedAsn.due_date ?? null,
-        deliverable_type: VALID_ASN_TYPES.has(parsedAsn.deliverable_type ?? "") ? parsedAsn.deliverable_type : "Project",
-        weight_pct: Number(parsedAsn.weight_pct) || 0,
+        title: paParsed.title ?? null,
+        due_date: paParsed.due_date ?? null,
+        deliverable_type: paDeliverableType,
+        weight_pct: paParsed.weight_pct ?? 0,
+        notes: paParsed.notes ?? null,
       }), { headers: CORS });
     }
 
@@ -687,10 +697,11 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
       const invalid422 = (msg: string) =>
         new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
-      const { id, course_id, okr_id, title, due_date,
+      const { id, course_id, okr_id, title, due_date: rawDueDate,
               deliverable_type = "Project", weight_pct = 0, notes = null } = body as Record<string, unknown>;
       if (!id || !course_id || !okr_id || !title)
         return invalid422("id, course_id, okr_id, and title are required");
+      const due_date = (typeof rawDueDate === "string" && rawDueDate) ? rawDueDate : new Date().toISOString().split("T")[0];
       const asnCourse = await env.DB.prepare("SELECT id FROM courses WHERE id = ?").bind(course_id).first();
       if (!asnCourse) return invalid422(`Course '${course_id}' not found`);
       const asnOkr = await env.DB.prepare("SELECT id FROM okrs WHERE id = ?").bind(okr_id).first();
@@ -700,6 +711,54 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
          VALUES (?,?,?,?,?,?,?,?) RETURNING *`
       ).bind(id, course_id, okr_id, title, due_date, deliverable_type, weight_pct, notes).first();
       return new Response(JSON.stringify({ assignment: row ?? { id, skipped: true } }), { headers: CORS });
+    }
+
+    // POST /api/assignments/:id/generate-tasks
+    // Auth: when MCP_SECRET_TOKEN is set, require either Cloudflare Access
+    // identity header (injected automatically by CF Access in the browser —
+    // the user never types a token) or a Bearer token (API / MCP callers).
+    const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
+    if (genTasksMatch && request.method === "POST") {
+      if (env.MCP_SECRET_TOKEN) {
+        const cfUser = request.headers.get("Cf-Access-Authenticated-User-Email");
+        const cfJwt  = request.headers.get("Cf-Access-Jwt-Assertion");
+        const auth   = request.headers.get("Authorization") ?? "";
+        if (!(cfUser && cfJwt) && auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+        }
+      }
+      const assignmentId = genTasksMatch[1];
+      const asnRow = await env.DB.prepare(
+        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,
+                c.name AS course_name, c.notes AS course_notes
+         FROM assignments a JOIN courses c ON c.id = a.course_id
+         WHERE a.id = ?`
+      ).bind(assignmentId).first<{
+        id: string; title: string; due_date: string | null;
+        deliverable_type: string; weight_pct: number; okr_id: string;
+        course_name: string; course_notes: string | null;
+      }>();
+      if (!asnRow) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
+      if (!env.ANTHROPIC_API_KEY)
+        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+      let generated: GeneratedTask[];
+      try {
+        generated = await generateTasksForAssignment(env.ANTHROPIC_API_KEY, asnRow);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Task generation failed: ${e instanceof Error ? e.message : String(e)}` }),
+          { status: 502, headers: CORS }
+        );
+      }
+      const tasks: unknown[] = [];
+      for (const t of generated) {
+        const row = await env.DB.prepare(
+          `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status)
+           VALUES (?, ?, ?, 'college-tracker', ?, 'To Do') RETURNING *`
+        ).bind(t.description, asnRow.okr_id, assignmentId, t.time_spent).first();
+        if (row) tasks.push(row);
+      }
+      return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
     }
 
     // ── REST: write routes (bearer-token protected) ───────────────────────────
@@ -721,43 +780,6 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
 
       const invalid = (msg: string) =>
         new Response(JSON.stringify({ error: msg }), { status: 422, headers: CORS });
-
-      // POST /api/assignments/:id/generate-tasks
-      const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
-      if (genTasksMatch && request.method === "POST") {
-        const assignmentId = genTasksMatch[1];
-        const asnRow = await env.DB.prepare(
-          `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.okr_id,
-                  c.name AS course_name, c.notes AS course_notes
-           FROM assignments a JOIN courses c ON c.id = a.course_id
-           WHERE a.id = ?`
-        ).bind(assignmentId).first<{
-          id: string; title: string; due_date: string | null;
-          deliverable_type: string; weight_pct: number; okr_id: string;
-          course_name: string; course_notes: string | null;
-        }>();
-        if (!asnRow) return new Response(JSON.stringify({ error: "Assignment not found" }), { status: 404, headers: CORS });
-        if (!env.ANTHROPIC_API_KEY)
-          return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
-        let generated: GeneratedTask[];
-        try {
-          generated = await generateTasksForAssignment(env.ANTHROPIC_API_KEY, asnRow);
-        } catch (e) {
-          return new Response(
-            JSON.stringify({ error: `Task generation failed: ${e instanceof Error ? e.message : String(e)}` }),
-            { status: 502, headers: CORS }
-          );
-        }
-        const tasks: unknown[] = [];
-        for (const t of generated) {
-          const row = await env.DB.prepare(
-            `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status)
-             VALUES (?, ?, ?, 'college-tracker', ?, 'To Do') RETURNING *`
-          ).bind(t.description, asnRow.okr_id, assignmentId, t.time_spent).first();
-          if (row) tasks.push(row);
-        }
-        return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
-      }
 
       // POST /api/tasks
       if (url.pathname === "/api/tasks" && request.method === "POST") {
@@ -838,12 +860,14 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       const asnMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
       if (asnMatch && request.method === "PUT") {
         const asnId = asnMatch[1];
-        const { status, grade = null, notes = null } = body as Record<string, unknown>;
+        const { status, due_date, blocker, grade = null, notes = null } = body as Record<string, unknown>;
         const fields: string[] = [];
         const vals: unknown[] = [];
-        if (status !== undefined) { fields.push("status = ?"); vals.push(status); }
-        if (grade   !== undefined) { fields.push("grade = ?");  vals.push(grade); }
-        if (notes   !== undefined) { fields.push("notes = ?");  vals.push(notes); }
+        if (status   !== undefined) { fields.push("status = ?");   vals.push(status); }
+        if (due_date !== undefined) { fields.push("due_date = ?"); vals.push(due_date); }
+        if (blocker  !== undefined) { fields.push("blocker = ?");  vals.push(blocker); }
+        if (grade    !== undefined) { fields.push("grade = ?");    vals.push(grade); }
+        if (notes    !== undefined) { fields.push("notes = ?");    vals.push(notes); }
         if (!fields.length) return invalid("No updatable fields provided");
         const row = await env.DB.prepare(
           `UPDATE assignments SET ${fields.join(", ")} WHERE id = ? RETURNING *`

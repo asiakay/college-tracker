@@ -6,7 +6,8 @@ name: Apply Assignment Blocker Migration
 #   CLOUDFLARE_API_TOKEN  — Cloudflare API token with D1 edit access
 #   CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID
 #
-# Applies migrations/0007_assignment_blocker.sql:
+# Applies migrations/0007_assignment_blocker.sql against the shared D1
+# database (repo-dashboard-work-items) which both repos use:
 #   ALTER TABLE assignments ADD COLUMN blocker TEXT;
 
 on:
@@ -25,4 +26,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute college-tracker --remote --file migrations/0007_assignment_blocker.sql
+          command: d1 execute repo-dashboard-work-items --remote --file migrations/0007_assignment_blocker.sql

@@ -859,12 +859,13 @@ export default {
       const asnMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
       if (asnMatch && request.method === "PUT") {
         const asnId = asnMatch[1];
-        const { status, grade = null, notes = null } = body as Record<string, unknown>;
+        const { status, due_date, grade = null, notes = null } = body as Record<string, unknown>;
         const fields: string[] = [];
         const vals: unknown[] = [];
-        if (status !== undefined) { fields.push("status = ?"); vals.push(status); }
-        if (grade   !== undefined) { fields.push("grade = ?");  vals.push(grade); }
-        if (notes   !== undefined) { fields.push("notes = ?");  vals.push(notes); }
+        if (status   !== undefined) { fields.push("status = ?");   vals.push(status); }
+        if (due_date !== undefined) { fields.push("due_date = ?"); vals.push(due_date); }
+        if (grade    !== undefined) { fields.push("grade = ?");    vals.push(grade); }
+        if (notes    !== undefined) { fields.push("notes = ?");    vals.push(notes); }
         if (!fields.length) return invalid("No updatable fields provided");
         const row = await env.DB.prepare(
           `UPDATE assignments SET ${fields.join(", ")} WHERE id = ? RETURNING *`

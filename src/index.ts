@@ -497,18 +497,18 @@ export default {
       }), { headers: CORS });
     }
 
-    // ── parse-assignment (public POST — no auth required) ──────────────────────
-    if (url.pathname === "/api/parse-assignment" && request.method === "POST") {
+    // ── parse-assignment-doc / parse-assignment (public POST — no auth) ──────────
+    if ((url.pathname === "/api/parse-assignment-doc" || url.pathname === "/api/parse-assignment") && request.method === "POST") {
       let body: Record<string, unknown>;
       try { body = await request.json() as Record<string, unknown>; }
       catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
 
       const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
       const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
-      const hasText = text && typeof text === "string" && text.trim().length >= 20;
+      const hasText = text && typeof text === "string" && text.trim().length >= 10;
       if (!hasFile && !hasText) {
         return new Response(
-          JSON.stringify({ error: "Provide a PDF, Word doc, or at least 20 characters of text" }),
+          JSON.stringify({ error: "Provide a PDF, Word doc, or at least 10 characters of text" }),
           { status: 422, headers: CORS }
         );
       }
@@ -523,7 +523,8 @@ export default {
   "deliverable_type": "one of: Essay, Exam, Project, Reading, Code, Presentation",
   "weight_pct": 0,
   "notes": "one-sentence description of the assignment, or null"
-}`;
+}
+Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/exercise → Code; paper/report/reflection/essay → Essay; project/capstone/portfolio → Project; reading/chapter → Reading; presentation/demo/talk → Presentation.`;
 
       const paContent: unknown[] = hasFile
         ? [

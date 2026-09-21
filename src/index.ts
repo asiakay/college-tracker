@@ -497,6 +497,71 @@ export default {
       }), { headers: CORS });
     }
 
+    // ── parse-assignment-doc: extract structured fields from one assignment doc ──
+    if (url.pathname === "/api/parse-assignment-doc" && request.method === "POST") {
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+
+      const { text, file_base64, file_type } = body as { text?: string; file_base64?: string; file_type?: string };
+      const hasFile = file_base64 && typeof file_base64 === "string" && file_base64.length > 0;
+      const hasText = text && typeof text === "string" && text.trim().length >= 10;
+      if (!hasFile && !hasText)
+        return new Response(JSON.stringify({ error: "Provide file_base64 or text" }), { status: 422, headers: CORS });
+
+      if (!env.ANTHROPIC_API_KEY)
+        return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), { status: 503, headers: CORS });
+
+      const instruction = `Extract the assignment details from this document. Return ONLY valid JSON — no markdown, no explanation, no code fences:
+{
+  "title": "assignment title (required)",
+  "due_date": "YYYY-MM-DD or null if not found",
+  "deliverable_type": "one of: Exam | Essay | Project | Reading | Code | Presentation",
+  "weight_pct": "number — percentage of final grade, 0 if not found"
+}
+Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/exercise → Code; paper/report/reflection/essay → Essay; project/capstone/portfolio → Project; reading/chapter → Reading; presentation/demo/talk → Presentation.`;
+
+      const userContent: unknown[] = hasFile
+        ? [
+            { type: "document", source: { type: "base64", media_type: file_type || "application/pdf", data: file_base64 } },
+            { type: "text", text: instruction },
+          ]
+        : [{ type: "text", text: `${instruction}\n\nDocument text:\n${(text as string).slice(0, 20000)}` }];
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "pdfs-2024-09-25",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 512,
+          messages: [{ role: "user", content: userContent }],
+        }),
+      });
+
+      if (!resp.ok)
+        return new Response(JSON.stringify({ error: `Anthropic API ${resp.status}` }), { status: 502, headers: CORS });
+
+      const asnData2 = await resp.json() as { content: Array<{ type: string; text: string }> };
+      const raw2 = asnData2.content.find(c => c.type === "text")?.text?.trim() ?? "{}";
+      const json2 = raw2.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      let parsedAsn: { title?: string; due_date?: string | null; deliverable_type?: string; weight_pct?: number };
+      try { parsedAsn = JSON.parse(json2); }
+      catch { return new Response(JSON.stringify({ error: "Model response could not be parsed" }), { status: 502, headers: CORS }); }
+
+      const VALID_ASN_TYPES = new Set(["Essay","Exam","Project","Reading","Code","Presentation"]);
+      return new Response(JSON.stringify({
+        title: parsedAsn.title ?? "",
+        due_date: parsedAsn.due_date ?? null,
+        deliverable_type: VALID_ASN_TYPES.has(parsedAsn.deliverable_type ?? "") ? parsedAsn.deliverable_type : "Project",
+        weight_pct: Number(parsedAsn.weight_pct) || 0,
+      }), { headers: CORS });
+    }
+
     // ── extract-text: pull raw text from a PDF or plain text (no auth) ─────────
     if (url.pathname === "/api/extract-text" && request.method === "POST") {
       let body: Record<string, unknown>;

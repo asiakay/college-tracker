@@ -337,6 +337,12 @@ function renderCourses() {
       <button class="btn-add-asn" data-course="${esc(course.id)}" data-okr="${esc(course.okr_id)}">+ Add assignment</button>
       <button class="btn-import-syllabus" data-course="${esc(course.id)}" data-name="${esc(course.name)}">📄 Import syllabus</button>
       <div class="add-asn-form" id="form-${esc(course.id)}">
+        <div class="asn-doc-upload" id="asn-upload-${esc(course.id)}">
+          <label class="asn-doc-label">📎 Parse from PDF or Word doc
+            <input type="file" class="asn-doc-file" accept=".pdf,.docx,.doc" hidden />
+          </label>
+          <span class="asn-doc-status"></span>
+        </div>
         <div class="form-grid">
           <div class="form-group">
             <label class="form-label">ID</label>
@@ -379,6 +385,53 @@ function renderCourses() {
   grid.querySelectorAll('.btn-add-asn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.getElementById('form-' + btn.dataset.course).classList.add('open');
+    });
+  });
+
+  // Assignment doc upload → parse fields
+  grid.querySelectorAll('.asn-doc-file').forEach(fileInput => {
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const form = fileInput.closest('.add-asn-form');
+      const statusEl = form.querySelector('.asn-doc-status');
+      statusEl.textContent = 'Parsing…';
+      try {
+        let payload;
+        if (file.name.match(/\.docx?$/i) && typeof mammoth !== 'undefined') {
+          const buf = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer: buf });
+          payload = { text: result.value };
+        } else {
+          const b64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          payload = { file_base64: b64, file_type: file.type || 'application/pdf' };
+        }
+        const res = await fetch('/api/parse-assignment-doc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) { statusEl.textContent = '⚠ ' + (data.error || 'Parse failed'); return; }
+        if (data.title)  form.querySelector('.asn-title').value = data.title;
+        if (data.due_date) form.querySelector('.asn-due').value = data.due_date;
+        if (data.weight_pct) form.querySelector('.asn-weight').value = data.weight_pct;
+        if (data.deliverable_type) {
+          const sel = form.querySelector('.asn-type');
+          const opt = [...sel.options].find(o => o.value === data.deliverable_type);
+          if (opt) sel.value = data.deliverable_type;
+        }
+        statusEl.textContent = '✓ Fields filled — review below';
+      } catch (e) {
+        statusEl.textContent = '⚠ ' + (e.message || 'Upload failed');
+      } finally {
+        fileInput.value = '';
+      }
     });
   });
 

@@ -338,7 +338,7 @@ export default {
     if (url.pathname === "/api/deadlines" && request.method === "GET") {
       const days = Math.min(Number(url.searchParams.get("days") ?? 14), 365);
       const { results } = await env.DB.prepare(
-        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes,
+        `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes, a.blocker,
                 a.course_id, a.okr_id,
                 c.name AS course_name, c.term,
                 o.objective, o.key_result
@@ -859,11 +859,12 @@ export default {
       const asnMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
       if (asnMatch && request.method === "PUT") {
         const asnId = asnMatch[1];
-        const { status, due_date, grade = null, notes = null } = body as Record<string, unknown>;
+        const { status, due_date, blocker, grade = null, notes = null } = body as Record<string, unknown>;
         const fields: string[] = [];
         const vals: unknown[] = [];
         if (status   !== undefined) { fields.push("status = ?");   vals.push(status); }
         if (due_date !== undefined) { fields.push("due_date = ?"); vals.push(due_date); }
+        if (blocker  !== undefined) { fields.push("blocker = ?");  vals.push(blocker); }
         if (grade    !== undefined) { fields.push("grade = ?");    vals.push(grade); }
         if (notes    !== undefined) { fields.push("notes = ?");    vals.push(notes); }
         if (!fields.length) return invalid("No updatable fields provided");

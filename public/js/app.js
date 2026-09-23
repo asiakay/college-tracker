@@ -82,6 +82,7 @@ function statusChip(s) {
 // ── Tab routing ────────────────────────────────────────────────────────────
 const VIEWS = {
   today:     { el: 'view-today',     load: loadToday },
+  tasks:     { el: 'view-tasks',     load: loadTasks },
   deadlines: { el: 'view-deadlines', load: loadDeadlines },
   courses:   { el: 'view-courses',   load: loadCourses },
   progress:  { el: 'view-progress',  load: loadProgress },
@@ -104,6 +105,211 @@ function switchTab(name) {
 
   currentTab = name;
   VIEWS[name].load();
+}
+
+// ── MICRO-TASK BOARD ───────────────────────────────────────────────────────
+// All micro-tasks load at once and filters apply locally, so a drag in a
+// filtered view can be merged back into the full column order.
+const MT_STATUSES = ['To Do', 'In Progress', 'Done'];
+let mtTasks = [];
+let mtProgress = null;
+let mtSortables = [];
+let mtSaving = false;
+
+async function loadTasks() {
+  const data = await get('/api/microtasks').catch(() => null);
+  if (!data) {
+    document.getElementById('mt-progress').innerHTML = `<div class="empty">Couldn't load micro-tasks.</div>`;
+    return;
+  }
+  mtTasks = data.tasks || [];
+  mtProgress = data.progress;
+  populateTaskFilters();
+  renderTasks();
+}
+
+function mtVisible(t) {
+  const course = document.getElementById('mt-course-filter').value;
+  const asn = document.getElementById('mt-asn-filter').value;
+  return (!course || t.course_id === course) && (!asn || t.assignment_id === asn);
+}
+
+function populateTaskFilters() {
+  const courseSel = document.getElementById('mt-course-filter');
+  const asnSel = document.getElementById('mt-asn-filter');
+  const course = courseSel.value, asn = asnSel.value;
+  const courses = new Map();
+  mtTasks.forEach(t => { if (t.course_id) courses.set(t.course_id, t.course_name || t.course_id); });
+  courseSel.innerHTML = '<option value="">All courses</option>' +
+    [...courses].map(([id, name]) => `<option value="${esc(id)}"${id === course ? ' selected' : ''}>${esc(name)}</option>`).join('');
+  const asns = new Map();
+  mtTasks.forEach(t => {
+    if (t.assignment_id && (!courseSel.value || t.course_id === courseSel.value)) asns.set(t.assignment_id, t.assignment_title || t.assignment_id);
+  });
+  asnSel.innerHTML = '<option value="">All assignments</option>' +
+    [...asns].map(([id, title]) => `<option value="${esc(id)}"${id === asn ? ' selected' : ''}>${esc(title)}</option>`).join('');
+}
+
+function ago(iso) {
+  if (!iso) return '';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+function renderTaskCard(t) {
+  const cd = t.due_date ? countdown(t.due_date) : null;
+  const options = MT_STATUSES.map(s => `<option${s === t.status ? ' selected' : ''}>${s}</option>`).join('');
+  return `<div class="mt-card${t.status === 'Done' ? ' mt-done' : ''}" data-id="${t.id}">
+    <div class="mt-card-top">
+      <span class="mt-desc">${esc(t.description)}</span>
+      <select class="mt-move" aria-label="Move task">${options}</select>
+    </div>
+    <div class="mt-meta">
+      ${t.course_name ? `<span class="chip chip-course">${esc(t.course_name)}</span>` : ''}
+      ${t.assignment_title ? `<span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}
+      ${t.canvas_url ? `<a class="chip chip-canvas" href="${esc(t.canvas_url)}" target="_blank" rel="noopener" title="Open in Canvas">Canvas ↗</a>` : ''}
+    </div>
+    <div class="mt-foot">
+      ${cd && t.status !== 'Done' ? `<span class="mt-due ${cd.cls}">${cd.label}</span>` : ''}
+      ${t.time_spent ? `<span>⏱ ${esc(t.time_spent)}</span>` : ''}
+      ${t.last_moved_at ? `<span class="mt-moved">moved ${ago(t.last_moved_at)}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderTaskProgress() {
+  const move = mtProgress?.movement;
+  const mvEl = document.getElementById('mt-movement');
+  if (move) {
+    const max = Math.max(1, ...move.done_by_day.map(d => d.done));
+    mvEl.innerHTML = `
+      <div class="mt-stats">
+        <div><span class="mt-stat">${move.moved_today}</span> moved today</div>
+        <div><span class="mt-stat">${move.done_this_week}</span> done this week</div>
+      </div>
+      <div class="mt-spark" role="img" aria-label="Micro-tasks completed per day, last 14 days">
+        ${move.done_by_day.map(d => `<div class="mt-bar" title="${esc(d.date)}: ${d.done} done"><div style="height:${Math.round((d.done / max) * 100)}%"></div></div>`).join('')}
+      </div>`;
+  }
+  const course = document.getElementById('mt-course-filter').value;
+  const asn = document.getElementById('mt-asn-filter').value;
+  const rows = (mtProgress?.assignments || []).filter(a => (!course || a.course_id === course) && (!asn || a.id === asn));
+  document.getElementById('mt-progress').innerHTML = rows.map(a => {
+    const donePct = a.total ? (a.done / a.total) * 100 : 0;
+    const progPct = a.total ? (a.in_progress / a.total) * 100 : 0;
+    const cd = a.due_date ? countdown(a.due_date) : null;
+    return `<div class="mt-prog-row">
+      <div class="mt-prog-head">
+        <span class="mt-prog-title">${esc(a.title)}${a.canvas_url ? ` <a class="chip chip-canvas" href="${esc(a.canvas_url)}" target="_blank" rel="noopener">Canvas ↗</a>` : ''}</span>
+        <span class="mt-prog-count">${a.done}/${a.total} done${cd ? ` · <span class="mt-due ${cd.cls}">${cd.label}</span>` : ''}</span>
+      </div>
+      <div class="mt-prog-bar"><div class="mt-prog-done" style="width:${donePct}%"></div><div class="mt-prog-doing" style="width:${progPct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderTasks() {
+  renderTaskProgress();
+  document.querySelectorAll('#view-tasks .mt-col').forEach(col => {
+    const status = col.dataset.status;
+    const items = mtTasks.filter(t => t.status === status && mtVisible(t));
+    col.querySelector('.mt-count').textContent = items.length;
+    col.querySelector('.mt-list').innerHTML = items.length
+      ? items.map(renderTaskCard).join('')
+      : `<div class="mt-empty">${status === 'To Do' ? 'Nothing queued. Use “Break down →” on an assignment.' : 'Drop tasks here'}</div>`;
+  });
+  document.querySelectorAll('#view-tasks .mt-move').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const id = Number(sel.closest('.mt-card').dataset.id);
+      moveTaskToTop(id, sel.value);
+    });
+  });
+  initTaskSortables();
+}
+
+function initTaskSortables() {
+  mtSortables.forEach(s => s.destroy());
+  mtSortables = [];
+  if (!window.Sortable) return; // status menus still work without drag-and-drop
+  document.querySelectorAll('#view-tasks .mt-list').forEach(list => {
+    mtSortables.push(window.Sortable.create(list, {
+      group: 'microtasks',
+      animation: 150,
+      filter: '.mt-move, a, .mt-empty',
+      preventOnFilter: false,
+      delay: 150,
+      delayOnTouchOnly: true,
+      ghostClass: 'mt-ghost',
+      onEnd: onTaskDrop,
+    }));
+  });
+}
+
+/** Full column order (all tasks, including ones hidden by filters). */
+function mtColumnIds(status, exclude) {
+  return mtTasks.filter(t => t.status === status && t.id !== exclude).map(t => t.id);
+}
+
+/** Merge the visible order after a drop back into the full column order. */
+function mergeColumnOrder(fullBefore, domIds) {
+  const visibleBefore = new Set(mtTasks.filter(t => mtVisible(t)).map(t => t.id));
+  const domKnown = domIds.filter(id => fullBefore.includes(id));
+  let k = 0;
+  const result = fullBefore.map(id => (visibleBefore.has(id) ? domKnown[k++] : id));
+  for (const id of domIds.filter(id => !fullBefore.includes(id))) {
+    const prev = domIds[domIds.indexOf(id) - 1];
+    if (prev === undefined) {
+      const first = result.findIndex(x => domIds.includes(x));
+      result.splice(first < 0 ? 0 : first, 0, id);
+    } else {
+      result.splice(result.indexOf(prev) + 1, 0, id);
+    }
+  }
+  return result;
+}
+
+async function onTaskDrop(evt) {
+  const id = Number(evt.item.dataset.id);
+  const from = evt.from.closest('.mt-col').dataset.status;
+  const to = evt.to.closest('.mt-col').dataset.status;
+  if (from === to && evt.oldIndex === evt.newIndex) return;
+  const domIds = [...evt.to.querySelectorAll('.mt-card')].map(el => Number(el.dataset.id));
+  const target = mergeColumnOrder(mtColumnIds(to, from === to ? null : id), domIds);
+  const updates = [{ status: to, ids: target }];
+  if (from !== to) updates.push({ status: from, ids: mtColumnIds(from, id) });
+  await saveTaskColumns(updates, from !== to && to === 'Done');
+}
+
+async function moveTaskToTop(id, status) {
+  const task = mtTasks.find(t => t.id === id);
+  if (!task || task.status === status) return;
+  const updates = [
+    { status, ids: [id, ...mtColumnIds(status, id)] },
+    { status: task.status, ids: mtColumnIds(task.status, id) },
+  ];
+  await saveTaskColumns(updates, status === 'Done');
+}
+
+async function saveTaskColumns(updates, finished) {
+  if (mtSaving) return;
+  mtSaving = true;
+  try {
+    for (const u of updates) {
+      if (!u.ids.length) continue;
+      const res = await api('/api/microtasks/column', { method: 'PUT', body: JSON.stringify({ status: u.status, ordered_ids: u.ids }) });
+      if (res.error) throw new Error(res.error);
+    }
+    if (finished) toast('Task done ✓');
+  } catch (e) {
+    if (e.message !== 'Unauthorized') toast(`Couldn't save: ${e.message}`, 'fail');
+  } finally {
+    mtSaving = false;
+    await loadTasks();
+  }
 }
 
 // ── TODAY ──────────────────────────────────────────────────────────────────
@@ -886,6 +1092,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (currentTab === 'today') loadToday();
       if (currentTab === 'progress') loadProgress();
       if (currentTab === 'history') loadHistory();
+      if (currentTab === 'tasks') loadTasks();
     } catch (e) {
       if (e.message !== 'Unauthorized') toast('Failed to log task', 'fail');
     }
@@ -905,6 +1112,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('dl-course-filter').addEventListener('change', renderDeadlines);
   document.getElementById('dl-status-filter').addEventListener('change', renderDeadlines);
   document.getElementById('dl-days-filter').addEventListener('change', loadDeadlines);
+
+  // Micro-task board filters
+  document.getElementById('mt-course-filter').addEventListener('change', () => { populateTaskFilters(); renderTasks(); });
+  document.getElementById('mt-asn-filter').addEventListener('change', renderTasks);
 
   // History datepicker
   document.getElementById('history-date').addEventListener('change', loadHistory);

@@ -1,8 +1,9 @@
 /**
- * /api/canvas/* — every route requires `Authorization: Bearer <MCP_SECRET_TOKEN>`.
+ * /api/canvas/* — same write-auth rule as the rest of the app (isWriteAuthorized).
  * The Canvas token itself is never returned, logged or sent to the browser.
  */
 
+import { isWriteAuthorized } from "../auth";
 import type { Env } from "../env";
 import { CanvasClient, CanvasError, getCanvasConfig, type CanvasConfig } from "./client";
 import { runCanvasSync, type SyncResult, type SyncTrigger } from "./sync";
@@ -12,14 +13,6 @@ const CANVAS_ID = /^\d+(~\d+)?$/;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: HEADERS });
-}
-
-async function isAuthorized(request: Request, env: Env): Promise<boolean> {
-  if (!env.MCP_SECRET_TOKEN) return false; // Canvas routes are never open.
-  const enc = new TextEncoder();
-  const got = enc.encode(request.headers.get("Authorization") ?? "");
-  const want = enc.encode(`Bearer ${env.MCP_SECRET_TOKEN}`);
-  return got.byteLength === want.byteLength && crypto.subtle.timingSafeEqual(got, want);
 }
 
 type ConfigResult = { cfg: CanvasConfig } | { error: string };
@@ -86,7 +79,7 @@ function localCourseIdFor(courseCode: string | null, canvasId: string): string {
 }
 
 export async function handleCanvasRoute(request: Request, env: Env, url: URL): Promise<Response> {
-  if (!(await isAuthorized(request, env))) return json({ error: "Unauthorized" }, 401);
+  if (!isWriteAuthorized(request, env)) return json({ error: "Unauthorized" }, 401);
 
   const path = url.pathname;
   const method = request.method;

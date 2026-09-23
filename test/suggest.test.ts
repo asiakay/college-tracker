@@ -71,7 +71,7 @@ describe("POST /api/microtasks/suggest", () => {
     ], capture);
     const res = await call("/api/microtasks/suggest", { method: "POST", env: { ANTHROPIC_API_KEY: "k" } });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ picks: [{ task_id: b, reason: "Big block of work." }, { task_id: a, reason: "Due in two days." }] });
+    expect(await res.json()).toMatchObject({ picks: [{ task_id: b, reason: "Big block of work." }, { task_id: a, reason: "Due in two days." }] });
 
     // Only open tasks go to Claude, with the fields it needs.
     const content = capture.body.messages[0].content as string;
@@ -85,7 +85,7 @@ describe("POST /api/microtasks/suggest", () => {
   it("returns no picks without calling Claude when nothing is open", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
     const res = await call("/api/microtasks/suggest", { method: "POST", env: { ANTHROPIC_API_KEY: "k" } });
-    expect(await res.json()).toEqual({ picks: [] });
+    expect(await res.json()).toEqual({ picks: [], picked_at: null });
     expect(spy).not.toHaveBeenCalled();
   });
 
@@ -103,5 +103,48 @@ describe("POST /api/microtasks/suggest", () => {
     }), { headers: { "Content-Type": "application/json" } }));
     const res = await call("/api/microtasks/suggest", { method: "POST", env: { ANTHROPIC_API_KEY: "k" } });
     expect(res.status).toBe(502);
+  });
+});
+
+describe("saved picks", () => {
+  const ask = (picks: unknown) => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      id: "msg_1", type: "message", role: "assistant", model: "claude-opus-5", stop_reason: "end_turn", stop_sequence: null,
+      content: [{ type: "text", text: JSON.stringify({ picks }) }], usage: { input_tokens: 1, output_tokens: 1 },
+    }), { headers: { "Content-Type": "application/json" } }));
+    return call("/api/microtasks/suggest", { method: "POST", env: { ANTHROPIC_API_KEY: "k" } });
+  };
+  const saved = async () => (await (await call("/api/microtasks/picks")).json()) as any;
+
+  it("keeps the picks until asked again, dropping finished and deleted tasks", async () => {
+    const a = await addTask("draft", "1h");
+    const b = await addTask("sketch", "2h", "To Do", "A2");
+    const c = await addTask("edit", "30m");
+    expect(await saved()).toEqual({ picks: [], picked_at: null, done_since: 0 });
+
+    const first = await (await ask([{ task_id: a, reason: "Due soon." }, { task_id: b, reason: "Big." }, { task_id: c, reason: "Quick." }])).json() as any;
+    expect(first.picked_at).toEqual(expect.any(String));
+    expect(await saved()).toEqual({
+      picks: [{ task_id: a, reason: "Due soon." }, { task_id: b, reason: "Big." }, { task_id: c, reason: "Quick." }],
+      picked_at: first.picked_at, done_since: 0,
+    });
+
+    // Finishing a pick drops it (counted); deleting one removes it; the rest keep their order.
+    await env.DB.prepare(`UPDATE tasks SET status = 'Done' WHERE id = ?`).bind(a).run();
+    await env.DB.prepare(`DELETE FROM tasks WHERE id = ?`).bind(c).run();
+    expect(await saved()).toMatchObject({ picks: [{ task_id: b, reason: "Big." }], done_since: 1 });
+
+    // Asking again replaces the whole set.
+    await ask([{ task_id: b, reason: "Only one left." }]);
+    expect(await saved()).toMatchObject({ picks: [{ task_id: b, reason: "Only one left." }], done_since: 0 });
+  });
+
+  it("still suggests before migration 0014, without saving", async () => {
+    const a = await addTask("draft", "1h");
+    await env.DB.prepare(`DROP TABLE task_picks`).run();
+    const res = await ask([{ task_id: a, reason: "Due soon." }]);
+    expect(await res.json()).toEqual({ picks: [{ task_id: a, reason: "Due soon." }], picked_at: null });
+    expect(await saved()).toEqual({ picks: [], picked_at: null, done_since: 0 });
   });
 });

@@ -45,6 +45,15 @@
       <div class="filters">
         <select class="filter-select" id="mt-course-filter" aria-label="Filter by course"><option value="">All courses</option></select>
         <select class="filter-select" id="mt-asn-filter" aria-label="Filter by assignment"><option value="">All assignments</option></select>
+        <div class="mt-export">
+          <button type="button" class="mt-export-btn" id="mt-export-btn" aria-haspopup="menu" aria-expanded="false" disabled
+            title="Pick an assignment to export its steps">Export ▾</button>
+          <div class="mt-export-menu" id="mt-export-menu" role="menu" hidden>
+            <button type="button" role="menuitem" data-format="csv">CSV (.csv)</button>
+            <button type="button" role="menuitem" data-format="xlsx">Excel (.xlsx)</button>
+            <button type="button" role="menuitem" data-format="pptx">PowerPoint (.pptx)</button>
+          </div>
+        </div>
       </div>
       <div class="mt-suggest-row">
         <button type="button" class="mt-suggest-btn" id="mt-suggest-btn">✨ What should I do next?</button>

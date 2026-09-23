@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DocError, extractDocument } from "../src/docs";
+import { DocError, extractDocument, pdfLinks } from "../src/docs";
 import { lectureHomeworkDocx, makeZip } from "./docx";
 
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -24,6 +24,22 @@ describe("extractDocument", () => {
     expect(pdf.kind).toBe("pdf");
     const html = await extractDocument(new TextEncoder().encode(`<p>Watch <a href="https://x.edu/v">this</a></p><script>bad()</script>`), "text/html", "p.html");
     expect(html).toEqual({ kind: "text", text: "Watch this (https://x.edu/v)", links: ["https://x.edu/v"] });
+  });
+
+  it("finds links in PDF annotations and compressed streams", async () => {
+    const enc = new TextEncoder();
+    const packed = new Uint8Array(await new Response(
+      new Blob([enc.encode("BT (Watch https://www.khanacademy.org/v/sci) Tj ET")]).stream().pipeThrough(new CompressionStream("deflate")),
+    ).arrayBuffer());
+    const parts = [
+      enc.encode("%PDF-1.4\n1 0 obj << /Type /Annot /Subtype /Link /A << /S /URI /URI (https://slides.example/sci\\(1\\)) >> >> endobj\n"),
+      enc.encode(`2 0 obj << /Length ${packed.length} /Filter /FlateDecode >>\nstream\n`), packed, enc.encode("\nendstream endobj\n%%EOF"),
+    ];
+    const pdf = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let o = 0;
+    for (const p of parts) { pdf.set(p, o); o += p.length; }
+    expect(await pdfLinks(pdf)).toEqual(expect.arrayContaining(["https://slides.example/sci(1)", "https://www.khanacademy.org/v/sci"]));
+    expect((await extractDocument(pdf, "application/pdf", "hw.pdf")).links).toContain("https://www.khanacademy.org/v/sci");
   });
 
   it("rejects files it can't read", async () => {

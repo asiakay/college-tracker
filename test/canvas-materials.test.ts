@@ -101,6 +101,12 @@ describe("Canvas module materials", () => {
     expect((await call("/api/canvas/courses/abc/modules")).status).toBe(400);
   });
 
+  it("drops the link when its assignment's course is deleted", async () => {
+    await call("/api/canvas/materials", { method: "POST", json: LINK });
+    expect((await call("/api/courses/SCI-133-F26", { method: "DELETE" })).status).toBe(200);
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM canvas_materials`).first()).toEqual({ n: 0 });
+  });
+
   it("keeps the board working before migration 0011 is applied", async () => {
     await env.DB.prepare(`DROP TABLE canvas_materials`).run();
     const res = await call("/api/microtasks");

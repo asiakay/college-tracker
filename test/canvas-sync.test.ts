@@ -21,8 +21,10 @@ class FakeReader implements CanvasReader {
   };
   failCourse: string | null = null;
   profileError: CanvasError | null = null;
+  profileCalls = 0;
 
   async getProfile() {
+    this.profileCalls++;
     if (this.profileError) throw this.profileError;
     return { id: "1", time_zone: "America/New_York" };
   }
@@ -70,6 +72,24 @@ describe("course sync", () => {
     reader = new FakeReader();
     await sync();
     expect((await env.DB.prepare(`SELECT removed_at FROM canvas_courses WHERE canvas_id='202'`).first())!.removed_at).toBeNull();
+  });
+});
+
+describe("profile / time zone", () => {
+  it("keeps syncing when the school blocks the profile endpoint, with a warning", async () => {
+    reader.profileError = new CanvasError("Canvas denied access to /api/v1/users/self/profile (403)", "forbidden", 403);
+    const r = done(await sync());
+    expect(r.status).toBe("succeeded");
+    expect(r.summary.timezone).toBe("UTC");
+    expect(r.summary.courses.seen).toBe(2);
+    expect(r.summary.warnings).toEqual([expect.stringContaining("Set CANVAS_TIMEZONE")]);
+  });
+
+  it("uses CANVAS_TIMEZONE without calling the profile", async () => {
+    const r = done(await runCanvasSync(env.DB, reader, { trigger: "manual", host: HOST, origin: ORIGIN, timeZoneOverride: "America/Los_Angeles" }));
+    expect(r.summary.timezone).toBe("America/Los_Angeles");
+    expect(reader.profileCalls).toBe(0);
+    expect(r.summary.warnings).toEqual([]);
   });
 });
 

@@ -334,6 +334,15 @@ async function handleGetDailySummary(env: Env, args: Record<string, unknown>) {
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 export default {
+  // Cron (wrangler.toml [triggers]) — same sync as POST /api/canvas/sync.
+  // Does nothing, and touches no tables, until Canvas is configured.
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    const result = await runConfiguredSync(env, "cron");
+    if ("error" in result) console.log(`Canvas sync skipped: ${result.error}`);
+    else if (result.locked) console.log("Canvas sync skipped: another run is in progress");
+    else console.log(`Canvas sync run ${result.run_id}: ${result.status}`);
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 

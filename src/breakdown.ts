@@ -12,6 +12,7 @@ import { CanvasError } from "./canvas/client";
 import { canvasClient, loadConfig } from "./canvas/routes";
 import { DocError, extractDocument, type ExtractedDoc } from "./docs";
 import type { Env } from "./env";
+import { fileIdFromDownloadUrl, saveMaterialLinks } from "./materials";
 import { todoColumnIds } from "./microtasks";
 
 const MAX_STEPS = 12;
@@ -131,14 +132,14 @@ export async function previewBreakdown(env: Env, assignmentId: string): Promise<
   if (!env.ANTHROPIC_API_KEY) return { error: "ANTHROPIC_API_KEY not configured", status: 503 };
   const loaded = loadConfig(env);
   if ("error" in loaded) return { error: loaded.error, status: 503 };
-  const origin = loaded.cfg.origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const fileId = material.download_url.match(new RegExp(`^${origin}/courses/\\d+/files/(\\d+)/download`))?.[1];
+  const fileId = fileIdFromDownloadUrl(loaded.cfg.origin, material.download_url);
   if (!fileId) return { error: "The linked file's Canvas link isn't recognised — link it again", status: 422 };
 
   let doc: ExtractedDoc;
   try {
     const file = await canvasClient(env, loaded.cfg).downloadFile(fileId);
     doc = await extractDocument(file.bytes, file.contentType, file.name);
+    await saveMaterialLinks(env.DB, assignmentId, doc.linkItems); // keep Materials in sync with the file
   } catch (e) {
     if (e instanceof DocError) return { error: e.message, status: 422 };
     if (e instanceof CanvasError) return { error: e.message, status: e.kind === "not_found" ? 404 : 502 };

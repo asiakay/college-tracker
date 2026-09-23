@@ -16,10 +16,11 @@
 
 import { isWriteAuthorized, requiresLogin } from "./auth";
 import { previewBreakdown, saveBreakdown } from "./breakdown";
-import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
+import { canvasClient, getCanvasStatus, handleCanvasRoute, loadConfig, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
 import { listMicrotasks, materialAssignmentIds, promoteAssignmentStmt, recordTaskCreated, remainingMinutesByAssignment, saveColumn } from "./microtasks";
 import { savedPicks, suggestNext } from "./suggest";
+import { readMaterialLinks } from "./materials";
 export type { Env } from "./env";
 
 const CORS = {
@@ -810,6 +811,19 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
         if (row) { tasks.push(row); await recordTaskCreated(env.DB, row["id"], "To Do"); }
       }
       return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
+    }
+
+    // Re-read the links inside an assignment's linked module file (Materials).
+    const matLinks = url.pathname.match(/^\/api\/assignments\/([^/]+)\/material-links$/);
+    if (matLinks && request.method === "POST") {
+      if (!(await isWriteAuthorized(request, env))) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      }
+      const loaded = loadConfig(env);
+      if ("error" in loaded) return new Response(JSON.stringify({ error: loaded.error }), { status: 503, headers: CORS });
+      const result = await readMaterialLinks(env.DB, canvasClient(env, loaded.cfg), loaded.cfg.origin, decodeURIComponent(matLinks[1]!));
+      const status = "error" in result ? result.status : 200;
+      return new Response(JSON.stringify(result), { status, headers: CORS });
     }
 
     // Break down from the linked Canvas file: preview (no writes), then save the kept steps.

@@ -7,6 +7,7 @@ import { accessConfig, isWriteAuthorized } from "../auth";
 import type { Env } from "../env";
 import { CanvasClient, CanvasError, getCanvasConfig, type CanvasConfig } from "./client";
 import { runCanvasSync, type SyncResult, type SyncTrigger } from "./sync";
+import { clearMaterialLinks, readMaterialLinks } from "../materials";
 
 const HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 const CANVAS_ID = /^\d+(~\d+)?$/;
@@ -298,13 +299,18 @@ export async function handleCanvasRoute(request: Request, env: Env, url: URL): P
       }
       throw e;
     }
-    return json(row);
+    // Best effort: the item stays linked even if its file can't be read. Old links go first,
+    // so a failed read never leaves another file's links showing (and it is retried later).
+    await clearMaterialLinks(env.DB, assignmentId);
+    const read = await readMaterialLinks(env.DB, canvasClient(env, loaded.cfg), loaded.cfg.origin, assignmentId);
+    return json({ ...row, links: "links" in read ? read.links : [], ...("error" in read ? { links_error: read.error } : {}) });
   }
 
   if (path === "/api/canvas/materials/unlink" && method === "POST") {
     const body = await readBody(request);
     const assignmentId = body?.["assignment_id"];
     if (typeof assignmentId !== "string" || !assignmentId) return json({ error: "assignment_id is required" }, 422);
+    await clearMaterialLinks(env.DB, assignmentId);
     await env.DB.prepare(`DELETE FROM canvas_materials WHERE assignment_id = ?`).bind(assignmentId).run();
     return json({ assignment_id: assignmentId, unlinked: true });
   }

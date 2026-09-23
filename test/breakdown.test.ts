@@ -102,7 +102,10 @@ describe("POST /api/assignments/:id/breakdown-preview", () => {
     expect(store.headers.get("authorization")).toBeNull();
     expect(canvas.find((r) => r.url.startsWith(`${ORIGIN}/files/555/download`))!.headers.get("authorization")).toBe("Bearer canvas-test-token");
 
-    expect(await count("tasks")).toBe(tasksBefore); // preview writes nothing
+    expect(await count("tasks")).toBe(tasksBefore); // preview adds no tasks…
+    await env.DB.prepare(`DELETE FROM canvas_material_links`).run();
+    await call(`/api/assignments/${ASN}/breakdown-preview`, { method: "POST", env: KEY });
+    expect(await count("canvas_material_links")).toBe(2); // …but refreshes the file's Materials links
   });
 
   it("explains what's missing", async () => {

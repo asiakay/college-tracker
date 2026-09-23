@@ -309,6 +309,10 @@ function pickCanvasLinks(t, { linksOnly = false } = {}) {
   if (t.canvas_url) {
     links.push(`<a class="mt-open-canvas${t.canvas_material_url ? ' secondary' : ''}" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`);
   }
+  // The resources the module file itself links to (slides, videos, …).
+  for (const l of t.canvas_material_links || []) {
+    links.push(`<a class="mt-doc-link" href="${esc(l.url)}" target="_blank" rel="noopener" title="${esc(l.url)}">🔗 ${esc(l.label)} ↗</a>`);
+  }
   if (!t.canvas_course_url) return links.join(' ');
   if (linksOnly && t.canvas_material_url) return links.join(' ');
   if (!t.canvas_material_url && !t.canvas_url) {
@@ -390,6 +394,22 @@ function pickDetails(tasks, t, opts = {}) {
   return `${steps}${own || materials ? `<div class="mt-suggest-links pick-materials">${materials && steps ? '<span class="pick-materials-label">Materials</span>' : ''}${own}${materials}</div>` : ''}`;
 }
 
+/**
+ * Files linked before Materials links existed haven't been read yet: read each
+ * once per page load, then re-render. Failures just leave the extra links out.
+ */
+const materialLinkReads = new Set();
+function readMissingMaterialLinks(tasks, rerender) {
+  const pending = [...new Set(mtPicks
+    .map(p => tasks.find(t => t.id === p.task_id))
+    .filter(t => t && t.assignment_id && t.canvas_material_download_url && !t.canvas_material_links_read)
+    .map(t => t.assignment_id))].filter(id => !materialLinkReads.has(id));
+  if (!pending.length) return;
+  pending.forEach(id => materialLinkReads.add(id));
+  Promise.all(pending.map(id => api(`/api/assignments/${encodeURIComponent(id)}/material-links`, { method: 'POST', body: '{}' }).catch(() => null)))
+    .then(results => { if (results.some(r => r && !r.error && (r.links || []).length)) rerender(); });
+}
+
 function picksHeading() {
   const bits = ['Claude suggests'];
   if (mtPicksMeta.picked_at) bits.push(`picked ${ago(mtPicksMeta.picked_at)}`);
@@ -408,6 +428,7 @@ function renderSuggestions() {
     return;
   }
   el.hidden = false;
+  readMissingMaterialLinks(mtTasks, reloadKeepingPicks);
   el.innerHTML = `<div class="mt-suggest-head">${esc(picksHeading())}</div><ol>${mtPicks.map(p => {
     const t = mtTasks.find(x => x.id === p.task_id);
     return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div>${pickDetails(mtTasks, t)}</li>`;
@@ -680,6 +701,7 @@ async function loadTodayNext(unsaved = null) {
   if (!mtPicks.length && !picks.picked_at && unsaved) mtPicks = unsaved; // before migration 0014
   const tasks = board.tasks || [];
   const rows = mtPicks.map((p, i) => ({ p, i, t: tasks.find(x => x.id === p.task_id) })).filter(r => r.t);
+  readMissingMaterialLinks(tasks, () => loadTodayNext());
   const head = `<div class="today-col-title today-next-head">
       <span>Up next${mtPicksMeta.picked_at ? ` <span class="today-next-meta">· picked ${ago(mtPicksMeta.picked_at)}${mtPicksMeta.done_since ? ` · ${mtPicksMeta.done_since} done ✓` : ''}</span>` : ''}</span>
       <a href="#" class="today-next-board">Open board →</a>

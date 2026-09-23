@@ -7,9 +7,49 @@
 export const MAX_TEXT_CHARS = 40_000;
 const MAX_ENTRY_BYTES = 20_000_000;
 
+export interface LinkItem { url: string; label: string }
+
 export type ExtractedDoc =
-  | { kind: "text"; text: string; links: string[] }
-  | { kind: "pdf"; bytes: Uint8Array; links: string[] };
+  | { kind: "text"; text: string; links: string[]; linkItems: LinkItem[] }
+  | { kind: "pdf"; bytes: Uint8Array; links: string[]; linkItems: LinkItem[] };
+
+const MAX_LINK_ITEMS = 20;
+const MAX_LABEL = 60;
+
+function hostLabel(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Link"; }
+}
+
+function cleanLabel(s: string): string {
+  const t = s.replace(/\s+/g, " ").replace(/^[\s•\-–*·>]+|[\s:–-]+$/g, "").trim();
+  return t.length > MAX_LABEL ? `${t.slice(0, MAX_LABEL - 1).trimEnd()}…` : t;
+}
+
+/**
+ * Each link with a readable label, in document order: the text written just
+ * before it on its line ("Watch this (url)"), else the nearest line above it
+ * ("Review Scientific Method Video (11:48 Total)" then the URL on its own line),
+ * else the host name. Links not in the text come last.
+ */
+export function labelLinks(text: string, links: string[]): LinkItem[] {
+  const lines = text.split("\n");
+  const found: Array<{ at: number; item: LinkItem }> = [];
+  for (const url of links) {
+    const at = text.indexOf(url);
+    let label = "";
+    if (at >= 0) {
+      const lineNo = text.slice(0, at).split("\n").length - 1;
+      const before = (lines[lineNo] ?? "").slice(0, at - text.lastIndexOf("\n", at - 1) - 1).replace(/\(\s*$/, "");
+      label = cleanLabel(before);
+      for (let i = lineNo - 1; !label && i >= 0 && i >= lineNo - 3; i--) {
+        const prev = (lines[i] ?? "").trim();
+        if (prev && !/^https?:\/\//.test(prev)) label = cleanLabel(prev);
+      }
+    }
+    found.push({ at: at >= 0 ? at : Number.MAX_SAFE_INTEGER, item: { url, label: label || hostLabel(url) } });
+  }
+  return found.sort((a, b) => a.at - b.at).slice(0, MAX_LINK_ITEMS).map((f) => f.item);
+}
 
 export class DocError extends Error {}
 
@@ -228,13 +268,18 @@ export async function extractDocument(bytes: Uint8Array, contentType: string, na
     if (!doc) throw new DocError("Not a valid .docx file");
     const dec = new TextDecoder();
     const { text, links } = docxText(dec.decode(doc), dec.decode(entries.get("word/_rels/document.xml.rels") ?? new Uint8Array()));
-    return { kind: "text", text: truncate(text), links };
+    return { kind: "text", text: truncate(text), links, linkItems: labelLinks(text, links) };
   }
-  if (type === "application/pdf" || lower.endsWith(".pdf")) return { kind: "pdf", bytes, links: await pdfLinks(bytes) };
+  if (type === "application/pdf" || lower.endsWith(".pdf")) {
+    const links = await pdfLinks(bytes);
+    return { kind: "pdf", bytes, links, linkItems: labelLinks("", links) };
+  }
   if (type.startsWith("text/") || /\.(txt|md|html?)$/.test(lower)) {
     const raw = new TextDecoder().decode(bytes);
     const text = type === "text/html" || /\.html?$/.test(lower) ? stripHtml(raw) : raw;
-    return { kind: "text", text: truncate(text), links: collectLinks(raw) };
+    // Decode entities first so href="…?a=1&amp;b=2" is stored as the real URL.
+    const links = collectLinks(text === raw ? raw : decodeEntities(raw));
+    return { kind: "text", text: truncate(text), links, linkItems: labelLinks(text, links) };
   }
   throw new DocError(`Can't read ${name || "this file"} — link a .docx, PDF or text file`);
 }

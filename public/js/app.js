@@ -3,6 +3,7 @@
 // In local dev point BASE_URL at the wrangler dev server.
 
 import { exportAssignment } from './export.js';
+import { stepsHtml } from './picks.js';
 
 const BASE = '';  // same origin
 
@@ -378,6 +379,17 @@ async function showMaterialLinker(btn) {
   });
 }
 
+/** Under a pick: its assignment's next steps (with links), then the materials row. */
+function pickDetails(tasks, t, opts = {}) {
+  if (!t) return '';
+  const steps = stepsHtml(tasks, t, esc);
+  // Without a breakdown there's no list, so show the pick's own link with the materials.
+  const own = !steps && t.link_url
+    ? `<a class="mt-task-link" href="${esc(t.link_url)}" target="_blank" rel="noopener">▶ ${esc(t.link_label || 'Open link')} ↗</a> ` : '';
+  const materials = pickCanvasLinks(t, opts);
+  return `${steps}${own || materials ? `<div class="mt-suggest-links pick-materials">${materials && steps ? '<span class="pick-materials-label">Materials</span>' : ''}${own}${materials}</div>` : ''}`;
+}
+
 function picksHeading() {
   const bits = ['Claude suggests'];
   if (mtPicksMeta.picked_at) bits.push(`picked ${ago(mtPicksMeta.picked_at)}`);
@@ -398,7 +410,7 @@ function renderSuggestions() {
   el.hidden = false;
   el.innerHTML = `<div class="mt-suggest-head">${esc(picksHeading())}</div><ol>${mtPicks.map(p => {
     const t = mtTasks.find(x => x.id === p.task_id);
-    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div><div class="mt-suggest-links">${pickCanvasLinks(t)}</div></li>`;
+    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div>${pickDetails(mtTasks, t)}</li>`;
   }).join('')}</ol>`;
   bindCanvasLinkers(el);
 }
@@ -686,7 +698,7 @@ async function loadTodayNext(unsaved = null) {
           ${t.time_spent ? `<span class="today-next-time">⏱ ${esc(t.time_spent)}</span>` : ''}
         </div>
         <div class="mt-suggest-reason">${esc(p.reason)}</div>
-        <div class="mt-suggest-links">${t.link_url ? `<a class="mt-task-link" href="${esc(t.link_url)}" target="_blank" rel="noopener">▶ ${esc(t.link_label || 'Open link')} ↗</a>` : ''}${pickCanvasLinks(t, { linksOnly: true })}</div>
+        ${pickDetails(tasks, t, { linksOnly: true })}
       </div>`).join('');
   }
   el.querySelector('.today-next-board')?.addEventListener('click', e => { e.preventDefault(); switchTab('tasks'); });

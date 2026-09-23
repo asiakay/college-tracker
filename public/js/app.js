@@ -188,6 +188,8 @@ function renderTaskCard(t) {
       ${t.time_spent ? `<span>⏱ ${esc(t.time_spent)}</span>` : ''}
       ${t.last_moved_at ? `<span class="mt-moved">moved ${ago(t.last_moved_at)}</span>` : ''}
     </div>
+    ${rank >= 0 ? `<div class="mt-suggest-links mt-card-links">${pickCanvasLinks(t) ||
+      `<span class="mt-no-canvas">Not linked to Canvas · <a href="manage-courses.html">link this course</a></span>`}</div>` : ''}
   </div>`;
 }
 
@@ -233,6 +235,7 @@ function renderTasks() {
       ? items.map(renderTaskCard).join('')
       : `<div class="mt-empty">${status === 'To Do' ? 'Nothing queued. Use “Break down →” on an assignment.' : 'Drop tasks here'}</div>`;
   });
+  document.querySelectorAll('#view-tasks .mt-card .mt-link-btn').forEach(btn => btn.addEventListener('click', () => showCanvasLinker(btn)));
   document.querySelectorAll('#view-tasks .mt-move').forEach(sel => {
     sel.addEventListener('change', () => {
       const id = Number(sel.closest('.mt-card').dataset.id);
@@ -332,7 +335,7 @@ function initTaskSortables() {
     mtSortables.push(window.Sortable.create(list, {
       group: 'microtasks',
       animation: 150,
-      filter: '.mt-move, a, .mt-empty',
+      filter: '.mt-move, a, button, select, .mt-empty',
       preventOnFilter: false,
       delay: 150,
       delayOnTouchOnly: true,

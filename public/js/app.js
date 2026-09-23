@@ -188,6 +188,8 @@ function renderTaskCard(t) {
       ${t.time_spent ? `<span>⏱ ${esc(t.time_spent)}</span>` : ''}
       ${t.last_moved_at ? `<span class="mt-moved">moved ${ago(t.last_moved_at)}</span>` : ''}
     </div>
+    ${rank >= 0 ? `<div class="mt-suggest-links mt-card-links">${pickCanvasLinks(t) ||
+      `<span class="mt-no-canvas">Not linked to Canvas · <a href="manage-courses.html">link this course</a></span>`}</div>` : ''}
   </div>`;
 }
 
@@ -233,6 +235,7 @@ function renderTasks() {
       ? items.map(renderTaskCard).join('')
       : `<div class="mt-empty">${status === 'To Do' ? 'Nothing queued. Use “Break down →” on an assignment.' : 'Drop tasks here'}</div>`;
   });
+  document.querySelectorAll('#view-tasks .mt-card .mt-link-btn').forEach(btn => btn.addEventListener('click', () => showCanvasLinker(btn)));
   document.querySelectorAll('#view-tasks .mt-move').forEach(sel => {
     sel.addEventListener('change', () => {
       const id = Number(sel.closest('.mt-card').dataset.id);
@@ -249,7 +252,9 @@ function pickCanvasLinks(t) {
     return `<a class="mt-open-canvas" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`;
   }
   if (!t.canvas_course_url) return '';
-  return `<a class="mt-open-canvas secondary" href="${esc(t.canvas_course_url)}" target="_blank" rel="noopener">Canvas course ↗</a>
+  // Many courses post work as files in Modules rather than as Canvas assignments.
+  const modules = `${String(t.canvas_course_url).replace(/\/+$/, '')}/modules`;
+  return `<a class="mt-open-canvas secondary" href="${esc(modules)}" target="_blank" rel="noopener">Course modules ↗</a>
     <button type="button" class="mt-link-btn" data-asn="${esc(t.assignment_id)}" data-ccid="${esc(t.canvas_course_id)}"
       title="This assignment isn't linked to its Canvas assignment yet">Link to Canvas assignment…</button>
     <span class="mt-link-slot"></span>`;
@@ -332,7 +337,7 @@ function initTaskSortables() {
     mtSortables.push(window.Sortable.create(list, {
       group: 'microtasks',
       animation: 150,
-      filter: '.mt-move, a, .mt-empty',
+      filter: '.mt-move, a, button, select, .mt-empty',
       preventOnFilter: false,
       delay: 150,
       delayOnTouchOnly: true,

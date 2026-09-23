@@ -1037,3 +1037,6 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; cursor: pointer;
 }
 .mt-link-select { font-size: 12px; max-width: 280px; background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 6px; padding: 3px; }
+.mt-card-links { margin-top: 8px; }
+.mt-no-canvas { font-size: 11.5px; color: var(--ink-low); }
+.mt-no-canvas a { color: var(--accent); }

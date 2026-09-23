@@ -49,6 +49,12 @@ describe("extractDocument", () => {
     expect((await extractDocument(pdf, "application/pdf", "hw.pdf")).links).toContain("https://www.khanacademy.org/v/sci");
   });
 
+  it("decodes HTML entities in links", async () => {
+    const html = await extractDocument(new TextEncoder().encode(`<p><a href="https://v.example/watch?a=1&amp;b=2">Video</a></p>`), "text/html", "p.html");
+    expect(html.links).toEqual(["https://v.example/watch?a=1&b=2"]);
+    expect(html.linkItems).toEqual([{ url: "https://v.example/watch?a=1&b=2", label: "Video" }]);
+  });
+
   it("labels links from their own text, the line above, or the host", async () => {
     const { labelLinks } = await import("../src/docs");
     const text = "Slides: Week 1 deck (https://a.example/1)\n\n• Watch the demo video:\nhttps://b.example/2\nhttps://c.example/3";

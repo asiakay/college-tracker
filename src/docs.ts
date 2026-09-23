@@ -277,7 +277,8 @@ export async function extractDocument(bytes: Uint8Array, contentType: string, na
   if (type.startsWith("text/") || /\.(txt|md|html?)$/.test(lower)) {
     const raw = new TextDecoder().decode(bytes);
     const text = type === "text/html" || /\.html?$/.test(lower) ? stripHtml(raw) : raw;
-    const links = collectLinks(raw);
+    // Decode entities first so href="…?a=1&amp;b=2" is stored as the real URL.
+    const links = collectLinks(text === raw ? raw : decodeEntities(raw));
     return { kind: "text", text: truncate(text), links, linkItems: labelLinks(text, links) };
   }
   throw new DocError(`Can't read ${name || "this file"} — link a .docx, PDF or text file`);

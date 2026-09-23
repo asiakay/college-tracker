@@ -193,4 +193,20 @@ describe("Canvas module materials", () => {
     await env.DB.prepare(`DROP TABLE canvas_material_links`).run();
     expect((await call("/api/microtasks")).status).toBe(200);
   });
+
+  it("drops the old file's links when relinking to a file that can't be read", async () => {
+    await call("/api/canvas/materials", { method: "POST", json: LINK });
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM canvas_material_links`).first()).toEqual({ n: 2 });
+    fileFails = true;
+    await call("/api/canvas/materials", { method: "POST", json: LINK });
+    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM canvas_material_links`).first()).toEqual({ n: 0 });
+    expect(await env.DB.prepare(`SELECT links_read_at FROM canvas_materials`).first()).toEqual({ links_read_at: null });
+  });
+
+  it("recognises sharded Canvas ids in download links", async () => {
+    const { fileIdFromDownloadUrl } = await import("../src/materials");
+    expect(fileIdFromDownloadUrl(ORIGIN, `${ORIGIN}/courses/1~101/files/2~555/download?download_frd=1`)).toBe("2~555");
+    expect(fileIdFromDownloadUrl(ORIGIN, `${ORIGIN}/courses/101/files/555/download?download_frd=1`)).toBe("555");
+    expect(fileIdFromDownloadUrl(ORIGIN, `https://evil.example/courses/101/files/555/download`)).toBeNull();
+  });
 });

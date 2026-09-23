@@ -10,7 +10,8 @@ import { DocError, extractDocument, type LinkItem } from "./docs";
 export function fileIdFromDownloadUrl(origin: string, downloadUrl: string | null): string | null {
   if (!downloadUrl) return null;
   const o = origin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return downloadUrl.match(new RegExp(`^${o}/courses/\\d+/files/(\\d+)/download`))?.[1] ?? null;
+  // Canvas ids may be sharded ("123~456"), as CANVAS_ID accepts in the routes.
+  return downloadUrl.match(new RegExp(`^${o}/courses/\\d+(?:~\\d+)?/files/(\\d+(?:~\\d+)?)/download`))?.[1] ?? null;
 }
 
 /** Replaces the saved links; false before migration 0015. */
@@ -27,6 +28,18 @@ export async function saveMaterialLinks(db: D1Database, assignmentId: string, it
   } catch (e) {
     if (e instanceof Error && /no such (table: canvas_material_links|column: links_read_at)|no column named links_read_at/.test(e.message)) return false;
     throw e;
+  }
+}
+
+/** Forgets the saved links (e.g. the linked item changed); no-op before migration 0015. */
+export async function clearMaterialLinks(db: D1Database, assignmentId: string): Promise<void> {
+  try {
+    await db.batch([
+      db.prepare(`DELETE FROM canvas_material_links WHERE assignment_id = ?`).bind(assignmentId),
+      db.prepare(`UPDATE canvas_materials SET links_read_at = NULL WHERE assignment_id = ?`).bind(assignmentId),
+    ]);
+  } catch (e) {
+    if (!(e instanceof Error && /no such (table: canvas_material_links|column: links_read_at)/.test(e.message))) throw e;
   }
 }
 

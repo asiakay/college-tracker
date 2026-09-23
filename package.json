@@ -5,13 +5,16 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
     "db:migrate:remote": "wrangler d1 execute college-tracker --remote --file=migrations/0003_college_and_okr_matrix.sql && wrangler d1 execute college-tracker --remote --file=migrations/0004_courses_credits.sql",
-    "db:migrate:local": "wrangler d1 execute college-tracker --local --file=migrations/0003_college_and_okr_matrix.sql && wrangler d1 execute college-tracker --local --file=migrations/0004_courses_credits.sql"
+    "db:migrate:local": "wrangler d1 execute college-tracker --local --file=migrations/0003_college_and_okr_matrix.sql && wrangler d1 execute college-tracker --local --file=migrations/0004_courses_credits.sql",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^4.20240909.0",
     "typescript": "^5.5.4",
-    "wrangler": "^3.78.10"
+    "vitest": "^4.1.0",
+    "wrangler": "^4.124.0"
   }
 }

@@ -245,10 +245,11 @@ async function handleLogAcademicTask(env: Env, args: Record<string, unknown>) {
      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`
   ).bind(description, okr_id, assignment_id, source_repo, time_spent, status, notes).first();
 
-  // Auto-submit the assignment when a Done task is logged against it
+  // Finishing a micro-task means work has started — it never means the
+  // assignment was submitted. Submission is an institutional fact (Canvas).
   if (status === "Done" && assignment_id) {
     await env.DB.prepare(
-      `UPDATE assignments SET status = 'Submitted' WHERE id = ? AND status = 'Not Started'`
+      `UPDATE assignments SET status = 'In Progress' WHERE id = ? AND status = 'Not Started'`
     ).bind(assignment_id).run();
   }
 

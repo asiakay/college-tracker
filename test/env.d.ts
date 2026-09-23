@@ -1,5 +1,5 @@
 import type { D1Migration } from "@cloudflare/vitest-pool-workers";
-import type { Env as WorkerEnv } from "../src/index";
+import type { Env as WorkerEnv } from "../src/env";
 
 declare global {
   namespace Cloudflare {

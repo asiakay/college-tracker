@@ -9,3 +9,10 @@ directory = "public"
 binding = "DB"
 database_name = "repo-dashboard-work-items"
 database_id = "321045e5-1e2c-4a29-a837-f5e9ff1b6502"
+
+# Canvas LMS sync. Set the origin of your school's Canvas instance, then add
+# the personal access token as a secret (never commit it):
+#   npx wrangler secret put CANVAS_API_TOKEN
+# [vars]
+# CANVAS_BASE_URL = "https://<school>.instructure.com"
+# CANVAS_TIMEZONE = "America/New_York"   # optional; defaults to the Canvas profile time zone

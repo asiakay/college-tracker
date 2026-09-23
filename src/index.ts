@@ -11,11 +11,8 @@
  *   get_daily_summary      — all tasks logged on a given date across all repos
  */
 
-export interface Env {
-  DB: D1Database;
-  MCP_SECRET_TOKEN?: string;
-  ANTHROPIC_API_KEY?: string;
-}
+import type { Env } from "./env";
+export type { Env } from "./env";
 
 const CORS = {
   "Content-Type": "application/json",

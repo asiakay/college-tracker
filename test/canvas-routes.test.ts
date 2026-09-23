@@ -195,3 +195,25 @@ describe("MCP canvas tools", () => {
     expect(JSON.parse(status.result.content[0].text)).toMatchObject({ configured: true, last_run: { trigger: "mcp" } });
   });
 });
+
+describe("grades on reads", () => {
+  it("shows submission flags and the Canvas course grade", async () => {
+    vi.restoreAllMocks();
+    stubCanvas({
+      courses: [{ ...DATA.courses[0]!, enrollments: [{ type: "student", computed_current_score: 88.2, computed_current_grade: "B+" }] }],
+      assignments: { "101": [{ id: "5002", name: "Midterm Quiz", due_at: "2026-10-15T16:00:00Z", points_possible: 50,
+        submission: { workflow_state: "graded", submitted_at: "2026-10-15T15:00:00Z", score: 45, late: true, missing: false } }] },
+    });
+    const withAccess = { ...ACCESS_ENV }; // grades are stored only once Access is configured
+    await call("/api/canvas/sync", { method: "POST", env: withAccess });
+    await call("/api/canvas/courses/101/link", { method: "POST", json: { local_course_id: "SCI-133-F26" }, env: withAccess });
+    await call("/api/canvas/sync", { method: "POST", env: withAccess });
+
+    const { assignments } = await (await call("/api/assignments?course_id=SCI-133-F26", { env: withAccess })).json() as { assignments: Array<Record<string, unknown>> };
+    expect(assignments.find((a) => a["id"] === "SCI-133-F26-C5002")).toMatchObject({
+      status: "Graded", grade: 90, canvas_submission_state: "graded", canvas_score: 45, canvas_late: 1, canvas_missing: 0,
+    });
+    const { courses } = await (await call("/api/courses", { env: withAccess })).json() as { courses: Array<Record<string, unknown>> };
+    expect(courses.find((c) => c["id"] === "SCI-133-F26")).toMatchObject({ canvas_current_score: 88.2, canvas_current_grade: "B+" });
+  });
+});

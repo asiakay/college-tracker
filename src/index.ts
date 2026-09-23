@@ -171,7 +171,9 @@ Rules:
 const CANVAS_COLUMNS = `,
   CASE WHEN ca.id IS NULL THEN 'manual' ELSE 'canvas' END AS source,
   ca.due_at AS canvas_due_at, ca.points_possible AS canvas_points, ca.html_url AS canvas_url,
-  CASE WHEN ca.id IS NULL THEN NULL WHEN ca.removed_at IS NOT NULL THEN 'removed' ELSE 'active' END AS canvas_state`;
+  CASE WHEN ca.id IS NULL THEN NULL WHEN ca.removed_at IS NOT NULL THEN 'removed' ELSE 'active' END AS canvas_state,
+  ca.submission_state AS canvas_submission_state, ca.score AS canvas_score,
+  ca.late AS canvas_late, ca.missing AS canvas_missing, ca.excused AS canvas_excused`;
 const CANVAS_JOIN = ` LEFT JOIN canvas_assignments ca ON ca.local_assignment_id = a.id`;
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
@@ -420,9 +422,11 @@ export default {
     if (url.pathname === "/api/courses" && request.method === "GET") {
       const term = url.searchParams.get("term");
       const { results } = await env.DB.prepare(
-        `SELECT id, name, instructor, term, okr_id, credits, notes, created_at FROM courses` +
-        (term ? ` WHERE term = ?` : ``) +
-        ` ORDER BY term DESC, name ASC`
+        `SELECT c.id, c.name, c.instructor, c.term, c.okr_id, c.credits, c.notes, c.created_at,
+                cc.current_score AS canvas_current_score, cc.current_grade AS canvas_current_grade
+         FROM courses c LEFT JOIN canvas_courses cc ON cc.local_course_id = c.id` +
+        (term ? ` WHERE c.term = ?` : ``) +
+        ` ORDER BY c.term DESC, c.name ASC`
       ).bind(...(term ? [term] : [])).all();
       return new Response(JSON.stringify({ courses: results }), { headers: CORS });
     }

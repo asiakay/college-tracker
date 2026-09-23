@@ -16,7 +16,8 @@
 import { CanvasError } from "./client";
 import {
   type NormalizedAssignment, type NormalizedCourse,
-  deliverableTypeFor, isValidTimeZone, normalizeAssignment, normalizeCourse, normalizeTitle,
+  STATUS_RANK, canvasGrade, canvasStatus, deliverableTypeFor, isValidTimeZone,
+  normalizeAssignment, normalizeCourse, normalizeTitle,
 } from "./normalize";
 import type { CanvasReader } from "./types";
 
@@ -28,6 +29,8 @@ export interface SyncOptions {
   host: string;
   origin: string;
   timeZoneOverride?: string | undefined;
+  /** Scores and grades are only stored once the site is protected by a login. */
+  gradesEnabled?: boolean;
   now?: () => Date;
   /** Canvas request stats, recorded in the summary. */
   stats?: () => { requests: number; rate_limit_remaining: number | null };
@@ -105,6 +108,9 @@ export async function runCanvasSync(db: D1Database, reader: CanvasReader, opts: 
   try {
     const timeZone = await resolveTimeZone(reader, opts.timeZoneOverride, summary);
     summary.timezone = timeZone;
+    if (!opts.gradesEnabled) {
+      summary.warnings.push("Grades skipped until the site is protected by a Cloudflare Access login.");
+    }
 
     // Each run stamps last_seen_at with its own start time; rows not stamped
     // were absent from Canvas' listing this run.
@@ -177,7 +183,7 @@ async function syncCourses(
   const raw = await reader.listCourses();
   const courses: NormalizedCourse[] = [];
   for (const r of raw) {
-    try { courses.push(await normalizeCourse(r, opts.origin)); }
+    try { courses.push(await normalizeCourse(r, opts.origin, !!opts.gradesEnabled)); }
     catch { summary.courses.skipped++; }
   }
 
@@ -194,12 +200,14 @@ async function syncCourses(
     return db.prepare(
       `INSERT INTO canvas_courses
          (canvas_host, canvas_id, name, course_code, workflow_state, term_name, start_at, end_at, html_url,
+          current_score, current_grade,
           content_hash, first_seen_at, last_seen_at, last_changed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (canvas_host, canvas_id) DO UPDATE SET
          name = excluded.name, course_code = excluded.course_code, workflow_state = excluded.workflow_state,
          term_name = excluded.term_name, start_at = excluded.start_at, end_at = excluded.end_at,
          html_url = excluded.html_url,
+         current_score = excluded.current_score, current_grade = excluded.current_grade,
          last_changed_at = CASE WHEN canvas_courses.content_hash <> excluded.content_hash
                                 THEN excluded.last_changed_at ELSE canvas_courses.last_changed_at END,
          content_hash = excluded.content_hash,
@@ -207,6 +215,7 @@ async function syncCourses(
          removed_at = NULL`,
     ).bind(
       opts.host, c.canvas_id, c.name, c.course_code, c.workflow_state, c.term_name, c.start_at, c.end_at, c.html_url,
+      c.current_score, c.current_grade,
       c.content_hash, runStamp, runStamp, runStamp,
     );
   });
@@ -225,7 +234,7 @@ async function syncCourses(
   if (markRemoved) summary.courses.removed = results[results.length - 1]!.meta.changes ?? 0;
 }
 
-interface LocalAssignment { id: string; title: string; due_date: string }
+interface LocalAssignment { id: string; title: string; due_date: string; status: string; grade: number | null }
 
 async function syncCourseAssignments(
   db: D1Database, reader: CanvasReader, opts: SyncOptions,
@@ -239,24 +248,24 @@ async function syncCourseAssignments(
   const assignments: NormalizedAssignment[] = [];
   let skipped = 0;
   for (const r of raw) {
-    try { assignments.push(await normalizeAssignment(r, canvasCourseId, timeZone)); }
+    try { assignments.push(await normalizeAssignment(r, canvasCourseId, timeZone, !!opts.gradesEnabled)); }
     catch { skipped++; }
   }
 
   const snapRows = await db.prepare(
     `SELECT ca.canvas_id, ca.content_hash, ca.local_assignment_id, ca.link_method,
-            a.id AS a_id, a.title AS a_title, a.due_date AS a_due_date
+            a.id AS a_id, a.title AS a_title, a.due_date AS a_due_date, a.status AS a_status, a.grade AS a_grade
      FROM canvas_assignments ca LEFT JOIN assignments a ON a.id = ca.local_assignment_id
      WHERE ca.canvas_host = ? AND ca.canvas_course_id = ?`,
   ).bind(opts.host, canvasCourseId).all<{
     canvas_id: string; content_hash: string; local_assignment_id: string | null; link_method: string | null;
-    a_id: string | null; a_title: string | null; a_due_date: string | null;
+    a_id: string | null; a_title: string | null; a_due_date: string | null; a_status: string | null; a_grade: number | null;
   }>();
   const snap = new Map(snapRows.results.map((r) => [r.canvas_id, r]));
 
   // Local assignments in this course not linked to any Canvas assignment.
   const unlinked = await db.prepare(
-    `SELECT a.id, a.title, a.due_date FROM assignments a
+    `SELECT a.id, a.title, a.due_date, a.status, a.grade FROM assignments a
      LEFT JOIN canvas_assignments ca ON ca.local_assignment_id = a.id
      WHERE a.course_id = ? AND ca.id IS NULL`,
   ).bind(localCourseId).all<LocalAssignment>();
@@ -276,11 +285,32 @@ async function syncCourseAssignments(
     ).bind(localId, method, opts.host, canvasId);
 
   // Overwrite only the Canvas-owned local columns, and only when they differ.
-  const project = (a: NormalizedAssignment, local: { id: string; title: string | null; due_date: string | null }) => {
+  // Status and grade only ever move forward; SQL enforces "never backward"
+  // even if the local row changed since it was read.
+  const project = (
+    a: NormalizedAssignment,
+    local: { id: string; title: string | null; due_date: string | null; status: string | null; grade: number | null },
+  ) => {
+    let changed = false;
     const newDue = a.due_date_local ?? local.due_date;
-    if (local.title === a.name && local.due_date === newDue) return;
-    counts.local_updated++;
-    stmts.push(db.prepare(`UPDATE assignments SET title = ?, due_date = ? WHERE id = ?`).bind(a.name, newDue, local.id));
+    if (local.title !== a.name || local.due_date !== newDue) {
+      changed = true;
+      stmts.push(db.prepare(`UPDATE assignments SET title = ?, due_date = ? WHERE id = ?`).bind(a.name, newDue, local.id));
+    }
+    const status = canvasStatus(a);
+    if (status && STATUS_RANK[status]! > (STATUS_RANK[local.status ?? ""] ?? 0)) {
+      changed = true;
+      stmts.push(db.prepare(
+        `UPDATE assignments SET status = ? WHERE id = ?
+           AND (CASE status WHEN 'Graded' THEN 3 WHEN 'Submitted' THEN 2 WHEN 'In Progress' THEN 1 ELSE 0 END) < ?`,
+      ).bind(status, local.id, STATUS_RANK[status]!));
+    }
+    const grade = canvasGrade(a);
+    if (grade !== null && grade !== local.grade) {
+      changed = true;
+      stmts.push(db.prepare(`UPDATE assignments SET grade = ? WHERE id = ?`).bind(grade, local.id));
+    }
+    if (changed) counts.local_updated++;
   };
 
   for (const a of assignments) {
@@ -293,14 +323,18 @@ async function syncCourseAssignments(
       `INSERT INTO canvas_assignments
          (canvas_host, canvas_id, canvas_course_id, name, due_at, due_date_local, lock_at, unlock_at,
           points_possible, grading_type, submission_types, published, html_url, canvas_updated_at,
+          submission_state, submitted_at, graded_at, score, grade, late, missing, excused,
           content_hash, first_seen_at, last_seen_at, last_changed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (canvas_host, canvas_id) DO UPDATE SET
          canvas_course_id = excluded.canvas_course_id, name = excluded.name, due_at = excluded.due_at,
          due_date_local = excluded.due_date_local, lock_at = excluded.lock_at, unlock_at = excluded.unlock_at,
          points_possible = excluded.points_possible, grading_type = excluded.grading_type,
          submission_types = excluded.submission_types, published = excluded.published,
          html_url = excluded.html_url, canvas_updated_at = excluded.canvas_updated_at,
+         submission_state = excluded.submission_state, submitted_at = excluded.submitted_at,
+         graded_at = excluded.graded_at, score = excluded.score, grade = excluded.grade,
+         late = excluded.late, missing = excluded.missing, excused = excluded.excused,
          last_changed_at = CASE WHEN canvas_assignments.content_hash <> excluded.content_hash
                                 THEN excluded.last_changed_at ELSE canvas_assignments.last_changed_at END,
          content_hash = excluded.content_hash,
@@ -309,6 +343,7 @@ async function syncCourseAssignments(
     ).bind(
       opts.host, a.canvas_id, canvasCourseId, a.name, a.due_at, a.due_date_local, a.lock_at, a.unlock_at,
       a.points_possible, a.grading_type, a.submission_types, a.published, a.html_url, a.canvas_updated_at,
+      a.submission_state, a.submitted_at, a.graded_at, a.score, a.grade, a.late, a.missing, a.excused,
       a.content_hash, runStamp, runStamp, runStamp,
     ));
 
@@ -316,7 +351,7 @@ async function syncCourseAssignments(
 
     // Already linked: project Canvas-owned fields.
     if (prev?.local_assignment_id && prev.a_id) {
-      project(a, { id: prev.a_id, title: prev.a_title, due_date: prev.a_due_date });
+      project(a, { id: prev.a_id, title: prev.a_title, due_date: prev.a_due_date, status: prev.a_status, grade: prev.a_grade });
       if (!a.due_date_local) {
         undated.push({ canvas_id: a.canvas_id, canvas_course_id: canvasCourseId, name: a.name, local_assignment_id: prev.a_id });
       }
@@ -360,6 +395,16 @@ async function syncCourseAssignments(
        VALUES (?, ?, ?, ?, ?, ?, 0)`,
     ).bind(localId, localCourseId, localCourse.okr_id, a.name, a.due_date_local, deliverableTypeFor(a.submission_types)));
     stmts.push(link(a.canvas_id, localId, "created"));
+    // Carry over Canvas status/grade for a new row (forward-only guard still applies).
+    const status = canvasStatus(a);
+    const grade = canvasGrade(a);
+    if (status) {
+      stmts.push(db.prepare(
+        `UPDATE assignments SET status = ? WHERE id = ?
+           AND (CASE status WHEN 'Graded' THEN 3 WHEN 'Submitted' THEN 2 WHEN 'In Progress' THEN 1 ELSE 0 END) < ?`,
+      ).bind(status, localId, STATUS_RANK[status]!));
+    }
+    if (grade !== null) stmts.push(db.prepare(`UPDATE assignments SET grade = ? WHERE id = ?`).bind(grade, localId));
   }
 
   // Soft-mark assignments Canvas no longer lists — only when the whole listing was understood.

@@ -18,6 +18,24 @@ export interface CanvasCourseJson {
   start_at?: string | null;
   end_at?: string | null;
   term?: { name?: string | null } | null;
+  /** With include[]=total_scores: the student's own enrollment(s). */
+  enrollments?: Array<{
+    type?: string | null;
+    computed_current_score?: number | null;
+    computed_current_grade?: string | null;
+  }> | null;
+}
+
+/** The current student's submission (include[]=submission). */
+export interface CanvasSubmissionJson {
+  workflow_state?: string | null; // unsubmitted | submitted | pending_review | graded
+  submitted_at?: string | null;
+  graded_at?: string | null;
+  score?: number | null;          // null until the grade is posted to the student
+  grade?: string | null;
+  late?: boolean | null;
+  missing?: boolean | null;
+  excused?: boolean | null;
 }
 
 export interface CanvasAssignmentJson {
@@ -33,6 +51,7 @@ export interface CanvasAssignmentJson {
   published?: boolean | null;
   html_url?: string | null;
   updated_at?: string | null;
+  submission?: CanvasSubmissionJson | null;
 }
 
 /**

@@ -3,7 +3,7 @@
  * The Canvas token itself is never returned, logged or sent to the browser.
  */
 
-import { isWriteAuthorized } from "../auth";
+import { accessConfig, isWriteAuthorized } from "../auth";
 import type { Env } from "../env";
 import { CanvasClient, CanvasError, getCanvasConfig, type CanvasConfig } from "./client";
 import { runCanvasSync, type SyncResult, type SyncTrigger } from "./sync";
@@ -38,6 +38,7 @@ export async function runConfiguredSync(env: Env, trigger: SyncTrigger): Promise
     host: cfg.host,
     origin: cfg.origin,
     timeZoneOverride: env.CANVAS_TIMEZONE,
+    gradesEnabled: accessConfig(env) !== null,
     stats: () => ({ requests: client.requestCount, rate_limit_remaining: client.lastRateLimitRemaining }),
   });
 }

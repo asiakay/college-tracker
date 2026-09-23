@@ -36,7 +36,8 @@ class FakeReader implements CanvasReader {
 }
 
 let reader: FakeReader;
-const sync = (): Promise<SyncResult> => runCanvasSync(env.DB, reader, { trigger: "manual", host: HOST, origin: ORIGIN });
+const sync = (gradesEnabled = true): Promise<SyncResult> =>
+  runCanvasSync(env.DB, reader, { trigger: "manual", host: HOST, origin: ORIGIN, gradesEnabled });
 function done(r: SyncResult) {
   if (r.locked) throw new Error("unexpectedly locked");
   return r;
@@ -86,7 +87,7 @@ describe("profile / time zone", () => {
   });
 
   it("uses CANVAS_TIMEZONE without calling the profile", async () => {
-    const r = done(await runCanvasSync(env.DB, reader, { trigger: "manual", host: HOST, origin: ORIGIN, timeZoneOverride: "America/Los_Angeles" }));
+    const r = done(await runCanvasSync(env.DB, reader, { trigger: "manual", host: HOST, origin: ORIGIN, timeZoneOverride: "America/Los_Angeles", gradesEnabled: true }));
     expect(r.summary.timezone).toBe("America/Los_Angeles");
     expect(reader.profileCalls).toBe(0);
     expect(r.summary.warnings).toEqual([]);
@@ -230,5 +231,81 @@ describe("lease", () => {
       .bind(new Date(Date.now() - 1000).toISOString()).run();
     expect(done(await sync()).status).toBe("succeeded");
     expect(await env.DB.prepare(`SELECT run_id, locked_until FROM canvas_sync_lock`).first()).toEqual({ run_id: null, locked_until: null });
+  });
+});
+
+describe("submissions and grades", () => {
+  const ID = "SCI-133-F26-C5002";
+  const setSub = (submission: Record<string, unknown>) => {
+    reader.assignments["101"]![1] = { ...reader.assignments["101"]![1]!, submission };
+  };
+  beforeEach(async () => {
+    await sync();
+    await enable("101", "SCI-133-F26");
+    await sync();
+  });
+
+  it("moves a submitted assignment to Submitted", async () => {
+    setSub({ workflow_state: "submitted", submitted_at: "2026-10-14T20:00:00Z" });
+    await sync();
+    expect(await asn(ID)).toMatchObject({ status: "Submitted", grade: null });
+    expect(await snap("5002")).toMatchObject({ submission_state: "submitted", submitted_at: "2026-10-14T20:00:00Z" });
+  });
+
+  it("moves a graded assignment to Graded with a percent grade", async () => {
+    setSub({ workflow_state: "graded", submitted_at: "2026-10-14T20:00:00Z", score: 87, grade: "87" });
+    await sync();
+    expect(await asn(ID)).toMatchObject({ status: "Graded", grade: 87 }); // 87 of 100 points
+    reader.assignments["101"]![0] = { ...reader.assignments["101"]![0]!, submission: { workflow_state: "graded", score: 15, grade: "15" } };
+    await sync();
+    expect((await asn("SCI-133-F26-C9007199254740993"))!.grade).toBe(75); // 15 of 20 points
+  });
+
+  it("never moves status backward", async () => {
+    await env.DB.prepare(`UPDATE assignments SET status = 'Submitted' WHERE id = ?`).bind(ID).run();
+    setSub({ workflow_state: "unsubmitted", missing: true });
+    await sync();
+    expect((await asn(ID))!.status).toBe("Submitted");
+    expect(await snap("5002")).toMatchObject({ missing: 1 });
+  });
+
+  it("keeps a manual grade when Canvas has no score", async () => {
+    await env.DB.prepare(`UPDATE assignments SET grade = 95 WHERE id = ?`).bind(ID).run();
+    setSub({ workflow_state: "submitted", submitted_at: "2026-10-14T20:00:00Z", score: null });
+    await sync();
+    expect((await asn(ID))!.grade).toBe(95);
+  });
+
+  it("stores no scores until grades are enabled, but still tracks submission", async () => {
+    reader.courses[0] = { ...reader.courses[0]!, enrollments: [{ type: "student", computed_current_score: 91.5, computed_current_grade: "A-" }] };
+    setSub({ workflow_state: "graded", submitted_at: "2026-10-14T20:00:00Z", score: 87, grade: "87" });
+    const r = await sync(false);
+    if (r.locked) throw new Error("locked");
+    expect(r.summary.warnings).toContain("Grades skipped until the site is protected by a Cloudflare Access login.");
+    expect(await asn(ID)).toMatchObject({ status: "Submitted", grade: null });
+    expect(await snap("5002")).toMatchObject({ score: null, grade: null, submission_state: "graded" });
+    expect(await env.DB.prepare(`SELECT current_score, current_grade FROM canvas_courses WHERE canvas_id='101'`).first())
+      .toEqual({ current_score: null, current_grade: null });
+
+    await sync(true);
+    expect(await asn(ID)).toMatchObject({ status: "Graded", grade: 87 });
+    expect(await env.DB.prepare(`SELECT current_score, current_grade FROM canvas_courses WHERE canvas_id='101'`).first())
+      .toEqual({ current_score: 91.5, current_grade: "A-" });
+  });
+
+  it("counts a newly posted grade as a change", async () => {
+    setSub({ workflow_state: "submitted", submitted_at: "2026-10-14T20:00:00Z" });
+    await sync();
+    setSub({ workflow_state: "graded", submitted_at: "2026-10-14T20:00:00Z", score: 90 });
+    const r = await sync();
+    if (r.locked) throw new Error("locked");
+    expect(r.summary.assignments.changed).toBe(1);
+  });
+
+  it("gives new Canvas-created rows their Canvas status", async () => {
+    reader.assignments["101"]!.push({ id: "7001", name: "Quiz 2", due_at: "2026-10-30T16:00:00Z", points_possible: 10,
+      submission: { workflow_state: "graded", score: 9, submitted_at: "2026-10-01T00:00:00Z" } });
+    await sync();
+    expect(await asn("SCI-133-F26-C7001")).toMatchObject({ status: "Graded", grade: 90 });
   });
 });

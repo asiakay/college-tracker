@@ -400,9 +400,19 @@ function populateCourseFilter(items) {
 function canvasBadge(a) {
   if (a.source !== 'canvas') return '';
   if (a.canvas_state === 'removed') return `<span class="chip chip-canvas" title="No longer listed in Canvas">Canvas: removed</span>`;
-  return a.canvas_url
+  const link = a.canvas_url
     ? `<a class="chip chip-canvas" href="${esc(a.canvas_url)}" target="_blank" rel="noopener" title="Open in Canvas">Canvas ↗</a>`
     : `<span class="chip chip-canvas">Canvas</span>`;
+  return link
+    + (a.canvas_missing ? ` <span class="chip chip-missing" title="Canvas marks this missing">Missing</span>` : '')
+    + (a.canvas_late ? ` <span class="chip chip-late" title="Canvas marks this late">Late</span>` : '');
+}
+
+/** Grade shown next to an assignment: Canvas grades are percents of points. */
+function gradeLabel(a) {
+  if (a.grade === null || a.grade === undefined || a.grade === '') return '';
+  const pct = a.source === 'canvas' && a.canvas_points ? '%' : '';
+  return `<span class="course-asn-grade" title="Grade">${esc(a.grade)}${pct}</span>`;
 }
 
 function renderDeadlines() {
@@ -531,6 +541,9 @@ function renderCourses() {
     return `<div class="course-card" id="card-${esc(course.id)}">
       <div class="course-name">${esc(course.name)}</div>
       <div class="course-meta">${esc(course.term)} · <span class="mono">${esc(course.id)}</span>${course.instructor ? ` · ${esc(course.instructor)}` : ''}</div>
+      ${course.canvas_current_score !== null && course.canvas_current_score !== undefined
+        ? `<div class="course-grade">Canvas grade: <strong>${esc(course.canvas_current_score)}%</strong>${course.canvas_current_grade ? ` (${esc(course.canvas_current_grade)})` : ''}</div>`
+        : ''}
       ${okr ? `<div style="font-size:11.5px;color:var(--ink-low);margin-bottom:8px;">OKR: ${esc(okr.objective)}</div>` : ''}
       <div class="course-prog-label">
         <span>Assignments</span>
@@ -542,6 +555,7 @@ function renderCourses() {
           <div class="course-asn-item">
             ${statusChip(a.status)}
             <span class="course-asn-title">${esc(a.title)} ${canvasBadge(a)}</span>
+            ${gradeLabel(a)}
             <span class="course-asn-due">${fmt(a.due_date)}</span>
           </div>`).join('') : `<div style="font-size:12px;color:var(--ink-low);padding:6px 0;">No assignments yet.</div>`}
       </div>

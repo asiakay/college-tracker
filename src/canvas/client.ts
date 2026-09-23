@@ -127,14 +127,14 @@ export class CanvasClient implements CanvasReader {
   listCourses(): Promise<CanvasCourseJson[]> {
     return this.getAll<CanvasCourseJson>("/api/v1/courses", {
       enrollment_state: "active",
-      "include[]": ["term"],
+      "include[]": ["term", "total_scores"],
     });
   }
 
   listAssignments(canvasCourseId: string): Promise<CanvasAssignmentJson[]> {
     return this.getAll<CanvasAssignmentJson>(
       `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/assignments`,
-      { order_by: "due_at" },
+      { order_by: "due_at", "include[]": ["submission"] },
     );
   }
 

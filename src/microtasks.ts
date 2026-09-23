@@ -117,6 +117,8 @@ export async function listMicrotasks(env: Env, url: URL) {
   const tz = isValidTimeZone(env.CANVAS_TIMEZONE) ? env.CANVAS_TIMEZONE : "UTC";
   const since = new Date(Date.now() - DONE_WINDOW_DAYS * 86_400_000);
 
+  // One assignment's view (e.g. export) shows all its steps; the board only recent Done ones.
+  const doneSince = url.searchParams.get("assignment_id") ? "0000-01-01" : since.toISOString().slice(0, 10);
   const { results: tasks } = await env.DB.prepare(
     `SELECT * FROM (
        SELECT t.id, t.description, t.status, t.time_spent, t.notes, t.date, t.created_at,
@@ -137,7 +139,7 @@ export async function listMicrotasks(env: Env, url: URL) {
      ) x
      WHERE x.status != 'Done' OR COALESCE(x.done_at, x.date) >= ?
      ORDER BY x.position IS NULL, x.position, x.due_date IS NULL, x.due_date, x.created_at, x.id`,
-  ).bind(...f.binds, since.toISOString().slice(0, 10)).all<Record<string, unknown>>();
+  ).bind(...f.binds, doneSince).all<Record<string, unknown>>();
 
   // Linked Canvas materials and task links, read separately so the board works before
   // migrations 0011–0013.

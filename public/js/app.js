@@ -2,6 +2,8 @@
 // All REST calls go to the same Worker origin (no CORS needed in prod).
 // In local dev point BASE_URL at the wrangler dev server.
 
+import { exportAssignment } from './export.js';
+
 const BASE = '';  // same origin
 
 // ── Auth ──────────────────────────────────────────────────────────────────
@@ -143,6 +145,40 @@ function mtVisible(t) {
   return (!course || t.course_id === course) && (!asn || t.assignment_id === asn);
 }
 
+function updateExportButton() {
+  const btn = document.getElementById('mt-export-btn');
+  const asn = document.getElementById('mt-asn-filter').value;
+  btn.disabled = !asn;
+  btn.title = asn ? 'Download this assignment’s steps' : 'Pick an assignment to export its steps';
+  if (!asn) closeExportMenu();
+}
+
+function closeExportMenu() {
+  document.getElementById('mt-export-menu').hidden = true;
+  document.getElementById('mt-export-btn').setAttribute('aria-expanded', 'false');
+}
+
+async function runExport(format) {
+  closeExportMenu();
+  const asn = document.getElementById('mt-asn-filter').value;
+  if (!asn) return;
+  const btn = document.getElementById('mt-export-btn');
+  btn.disabled = true;
+  btn.textContent = 'Exporting…';
+  try {
+    // Fetch the assignment on its own: that includes Done steps older than the board shows.
+    const data = await get(`/api/microtasks?assignment_id=${encodeURIComponent(asn)}`);
+    if (data.error) throw new Error(data.error);
+    const name = await exportAssignment(data.tasks || [], format, { parseDuration, fmtMinutes });
+    toast(`Downloaded ${name}`);
+  } catch (e) {
+    if (e.message !== 'Unauthorized') toast(`Couldn't create the file: ${e.message}`, 'fail');
+  } finally {
+    btn.textContent = 'Export ▾';
+    updateExportButton();
+  }
+}
+
 function populateTaskFilters() {
   const courseSel = document.getElementById('mt-course-filter');
   const asnSel = document.getElementById('mt-asn-filter');
@@ -157,6 +193,7 @@ function populateTaskFilters() {
   });
   asnSel.innerHTML = '<option value="">All assignments</option>' +
     [...asns].map(([id, title]) => `<option value="${esc(id)}"${id === asn ? ' selected' : ''}>${esc(title)}</option>`).join('');
+  updateExportButton();
 }
 
 function ago(iso) {
@@ -1413,6 +1450,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Micro-task board filters
   document.getElementById('mt-course-filter').addEventListener('change', () => { populateTaskFilters(); renderTasks(); });
   document.getElementById('mt-asn-filter').addEventListener('change', renderTasks);
+  document.getElementById('mt-asn-filter').addEventListener('change', updateExportButton);
+  document.getElementById('mt-export-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const menu = document.getElementById('mt-export-menu');
+    menu.hidden = !menu.hidden;
+    e.currentTarget.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.querySelectorAll('#mt-export-menu [data-format]').forEach(b =>
+    b.addEventListener('click', () => runExport(b.dataset.format)));
+  document.addEventListener('click', e => { if (!e.target.closest('.mt-export')) closeExportMenu(); });
   document.getElementById('mt-suggest-btn').addEventListener('click', suggestNextTask);
 
   // History datepicker

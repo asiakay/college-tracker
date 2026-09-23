@@ -53,6 +53,14 @@ describe("GET /api/microtasks", () => {
     expect((await board()).tasks.map((t) => t.id)).toContain(other);
   });
 
+  it("shows every step, including old Done ones, when filtered to one assignment", async () => {
+    const oldDone = await addTask("old done", { status: "Done", date: "2026-01-01" });
+    const open = await addTask("still open");
+    await addTask("other assignment", { assignment_id: "A2" });
+    expect((await board("?assignment_id=A1")).tasks.map((t) => t.id).sort()).toEqual([oldDone, open].sort());
+    expect((await board()).tasks.map((t) => t.id)).not.toContain(oldDone);
+  });
+
   it("includes Canvas links for the assignment and its course", async () => {
     const id = await addTask("t");
     await env.DB.batch([

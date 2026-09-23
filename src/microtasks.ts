@@ -82,14 +82,13 @@ export async function listMicrotasks(env: Env, url: URL) {
   const tz = isValidTimeZone(env.CANVAS_TIMEZONE) ? env.CANVAS_TIMEZONE : "UTC";
   const since = new Date(Date.now() - DONE_WINDOW_DAYS * 86_400_000);
 
-  const taskSql = (materials: boolean) =>
+  const { results: tasks } = await env.DB.prepare(
     `SELECT * FROM (
        SELECT t.id, t.description, t.status, t.time_spent, t.notes, t.date, t.created_at,
               t.assignment_id, t.okr_id,
               a.title AS assignment_title, a.due_date, a.status AS assignment_status, a.course_id,
               c.name AS course_name, ca.html_url AS canvas_url,
               cc.html_url AS canvas_course_url, cc.canvas_id AS canvas_course_id,
-              ${materials ? "m.html_url" : "NULL"} AS canvas_material_url, ${materials ? "m.title" : "NULL"} AS canvas_material_title,
               p.position,
               (SELECT MAX(e.at) FROM task_events e WHERE e.task_id = t.id) AS last_moved_at,
               (SELECT MAX(e.at) FROM task_events e WHERE e.task_id = t.id AND e.to_status = 'Done') AS done_at
@@ -98,20 +97,26 @@ export async function listMicrotasks(env: Env, url: URL) {
        LEFT JOIN courses c ON c.id = a.course_id
        LEFT JOIN canvas_assignments ca ON ca.local_assignment_id = a.id
        LEFT JOIN canvas_courses cc ON cc.local_course_id = a.course_id
-       ${materials ? "LEFT JOIN canvas_materials m ON m.assignment_id = a.id" : ""}
        LEFT JOIN task_positions p ON p.task_id = t.id
        WHERE ${ACADEMIC}${f.sql}
      ) x
      WHERE x.status != 'Done' OR COALESCE(x.done_at, x.date) >= ?
-     ORDER BY x.position IS NULL, x.position, x.due_date IS NULL, x.due_date, x.created_at, x.id`;
-  const taskBinds = [...f.binds, since.toISOString().slice(0, 10)];
-  let tasks: Record<string, unknown>[];
+     ORDER BY x.position IS NULL, x.position, x.due_date IS NULL, x.due_date, x.created_at, x.id`,
+  ).bind(...f.binds, since.toISOString().slice(0, 10)).all<Record<string, unknown>>();
+
+  // Linked Canvas materials, read separately so the board works before migrations 0011/0012.
+  const materials = new Map<string, Record<string, unknown>>();
   try {
-    ({ results: tasks } = await env.DB.prepare(taskSql(true)).bind(...taskBinds).all());
+    const { results } = await env.DB.prepare(`SELECT * FROM canvas_materials`).all<Record<string, unknown>>();
+    for (const m of results) materials.set(m["assignment_id"] as string, m);
   } catch (e) {
-    // Before migration 0011 the board still works, just without module links.
     if (!(e instanceof Error && /no such table: canvas_materials/.test(e.message))) throw e;
-    ({ results: tasks } = await env.DB.prepare(taskSql(false)).bind(...taskBinds).all());
+  }
+  for (const t of tasks) {
+    const m = t["assignment_id"] ? materials.get(t["assignment_id"] as string) : undefined;
+    t["canvas_material_url"] = m?.["html_url"] ?? null;
+    t["canvas_material_title"] = m?.["title"] ?? null;
+    t["canvas_material_download_url"] = m?.["download_url"] ?? null;
   }
 
   const { results: assignments } = await env.DB.prepare(

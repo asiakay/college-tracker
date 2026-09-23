@@ -251,6 +251,9 @@ function pickCanvasLinks(t) {
   const links = [];
   if (t.canvas_material_url) {
     links.push(`<a class="mt-open-canvas" href="${esc(t.canvas_material_url)}" target="_blank" rel="noopener" title="Open the linked Canvas material">📄 ${esc(t.canvas_material_title || 'Material')} ↗</a>`);
+    if (t.canvas_material_download_url) {
+      links.push(`<a class="mt-open-canvas secondary" href="${esc(t.canvas_material_download_url)}" target="_blank" rel="noopener" title="Download from Canvas (you must be logged in to Canvas)">⬇ Download</a>`);
+    }
   }
   if (t.canvas_url) {
     links.push(`<a class="mt-open-canvas${t.canvas_material_url ? ' secondary' : ''}" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`);
@@ -306,7 +309,7 @@ async function showMaterialLinker(btn) {
   slot.innerHTML = `<select class="mt-link-select" aria-label="Canvas module item">
       ${modules.map(m => `<optgroup label="${esc(m.name)}">${m.items.map(i =>
         `<option value="${esc(m.id)}:${esc(i.id)}">${i.type === 'File' ? '📄 ' : ''}${esc(i.title)}</option>`).join('')}</optgroup>`).join('')}
-    </select> <button type="button" class="mt-link-save">Link</button>`;
+    </select> <button type="button" class="mt-link-save">Use this file</button>`;
   slot.querySelector('.mt-link-save').addEventListener('click', async () => {
     const [moduleId, itemId] = slot.querySelector('.mt-link-select').value.split(':');
     try {

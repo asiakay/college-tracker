@@ -186,6 +186,29 @@
 
   <div class="toast-area" id="toast-area"></div>
 
+  <!-- BREAK DOWN FROM CANVAS FILE -->
+  <div class="modal-backdrop" id="bd-backdrop" hidden>
+    <div class="modal bd-modal" role="dialog" aria-modal="true" aria-labelledby="bd-title">
+      <div class="modal-header">
+        <span class="modal-title" id="bd-title">Break down</span>
+        <button class="modal-close" id="bd-close" aria-label="Close">×</button>
+      </div>
+      <div id="bd-loading" class="bd-loading"><span class="modal-spinner"></span> Claude is reading <span id="bd-file">the file</span>…</div>
+      <div id="bd-review" hidden>
+        <p class="modal-hint">From <a id="bd-source" target="_blank" rel="noopener"></a>. Untick or edit steps, then add them to your board.</p>
+        <ul class="bd-warnings" id="bd-warnings" hidden></ul>
+        <ol class="bd-steps" id="bd-steps"></ol>
+        <label class="bd-replace" id="bd-replace-wrap" hidden>
+          <input type="checkbox" id="bd-replace" checked> Remove <span id="bd-replace-n"></span> untouched To Do task(s) for this assignment
+        </label>
+        <div class="modal-actions">
+          <button class="btn-save" id="bd-add">Add steps</button>
+          <span class="bd-total" id="bd-total"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- SYLLABUS IMPORT MODAL -->
   <div class="modal-backdrop" id="syllabus-backdrop" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">

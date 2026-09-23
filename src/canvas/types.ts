@@ -65,6 +65,16 @@ export interface CanvasModuleItemJson {
   published?: boolean | null;
 }
 
+export interface CanvasFileJson {
+  id: string;
+  display_name?: string | null;
+  filename?: string | null;
+  "content-type"?: string | null;
+  size?: number | null;
+  /** Download URL on the Canvas host; redirects to Canvas's file store. */
+  url?: string | null;
+}
+
 export interface CanvasModuleJson {
   id: string;
   name?: string | null;

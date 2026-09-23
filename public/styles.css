@@ -1040,3 +1040,36 @@ a:hover { text-decoration: underline; }
 .mt-card-links { margin-top: 8px; }
 .mt-no-canvas { font-size: 11.5px; color: var(--ink-low); }
 .mt-no-canvas a { color: var(--accent); }
+
+/* ── Break down from the linked Canvas file ─────────────────────────────── */
+.mt-task-link {
+  display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 500;
+  color: var(--accent); text-decoration: none; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mt-task-link:hover { text-decoration: underline; }
+.mt-task-notes {
+  margin-top: 4px; font-size: 11.5px; color: var(--ink-mid);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.bd-modal { max-width: 640px; }
+#bd-review { padding: 20px; }
+.bd-loading { display: flex; gap: 10px; align-items: center; padding: 24px 20px; color: var(--ink-mid); font-size: 13px; }
+.bd-warnings { list-style: none; margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--amber-dim); color: var(--amber); font-size: 12.5px; }
+.bd-warnings li + li { margin-top: 4px; }
+.bd-steps { list-style: none; margin: 0 0 12px; padding: 0; max-height: 55vh; overflow-y: auto; }
+.bd-steps li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border2); }
+.bd-steps li:has(.bd-keep:not(:checked)) .bd-step { opacity: 0.45; }
+.bd-keep { margin-top: 8px; }
+.bd-step { flex: 1; min-width: 0; }
+.bd-desc, .bd-time {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+}
+.bd-desc { width: 100%; box-sizing: border-box; }
+.bd-time { width: 80px; font-size: 12px; }
+.bd-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.bd-meta .mt-task-link { margin-top: 0; }
+.bd-detail { margin-top: 4px; font-size: 12px; color: var(--ink-mid); }
+.bd-replace { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-mid); margin-bottom: 12px; }
+.bd-total { align-self: center; font-size: 12.5px; color: var(--ink-mid); }

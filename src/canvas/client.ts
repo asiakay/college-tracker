@@ -12,7 +12,7 @@
 
 import type { Env } from "../env";
 import type {
-  CanvasAssignmentJson, CanvasCourseJson, CanvasModuleItemJson, CanvasModuleJson, CanvasProfileJson, CanvasReader,
+  CanvasAssignmentJson, CanvasCourseJson, CanvasFileJson, CanvasModuleItemJson, CanvasModuleJson, CanvasProfileJson, CanvasReader,
 } from "./types";
 
 export type CanvasErrorKind =
@@ -88,6 +88,7 @@ export interface CanvasClientOptions {
 const ACCEPT = "application/json+canvas-string-ids";
 const LOW_QUOTA = 100;
 const USER_AGENT = "college-tracker-canvas-sync";
+const MAX_DOWNLOAD_BYTES = 5_000_000;
 
 /** Canvas's own error text from a JSON error body, e.g. "user not authorized to perform that action". */
 export function canvasErrorDetail(body: string): string {
@@ -158,6 +159,61 @@ export class CanvasClient implements CanvasReader {
     return this.get<CanvasModuleItemJson>(
       `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/modules/${encodeURIComponent(moduleId)}/items/${encodeURIComponent(itemId)}`,
     );
+  }
+
+  /**
+   * The bytes of a Canvas file the student can see. The token is sent only to
+   * the Canvas host; Canvas's redirect to its file store is followed without it.
+   */
+  async downloadFile(fileId: string, maxBytes = MAX_DOWNLOAD_BYTES): Promise<{ bytes: Uint8Array; contentType: string; name: string }> {
+    const meta = await this.get<CanvasFileJson>(`/api/v1/files/${encodeURIComponent(fileId)}`);
+    const name = meta.display_name ?? meta.filename ?? `file-${fileId}`;
+    if (typeof meta.size === "number" && meta.size > maxBytes) {
+      throw new CanvasError(`${name} is too large to read (${Math.round(meta.size / 1_000_000)} MB)`, "bad_response");
+    }
+    let url: URL;
+    try { url = new URL(meta.url ?? ""); }
+    catch { throw new CanvasError("Canvas did not return a download link for the file", "bad_response"); }
+    if (url.origin !== this.cfg.origin) throw new CanvasError("Canvas file link points to an unexpected host", "bad_response");
+
+    let res: Response | null = null;
+    for (let hop = 0; hop < 5; hop++) {
+      if (this.requestCount >= this.maxRequests) {
+        throw new CanvasError(`Canvas request budget (${this.maxRequests}) exhausted`, "budget");
+      }
+      this.requestCount++;
+      const onCanvas = url.origin === this.cfg.origin;
+      const headers: Record<string, string> = { "User-Agent": USER_AGENT };
+      if (onCanvas) headers["Authorization"] = `Bearer ${this.cfg.token}`;
+      try {
+        res = await this.fetchFn(url.toString(), { method: "GET", headers, redirect: "manual" });
+      } catch {
+        throw new CanvasError(`Network error downloading ${name}`, "network");
+      }
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      if (!location) break;
+      const next = new URL(location, url);
+      if (next.protocol !== "https:") throw new CanvasError("Canvas file redirect is not https", "bad_response");
+      url = next;
+      res = null;
+    }
+    if (!res) throw new CanvasError(`Too many redirects downloading ${name}`, "bad_response");
+    if (!res.ok) throw new CanvasError(`Downloading ${name} failed with ${res.status}`, res.status === 404 ? "not_found" : "http", res.status);
+
+    const reader = res.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) { await reader.cancel(); throw new CanvasError(`${name} is too large to read`, "bad_response"); }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let o = 0;
+    for (const c of chunks) { bytes.set(c, o); o += c.byteLength; }
+    return { bytes, contentType: meta["content-type"] ?? res.headers.get("content-type") ?? "", name };
   }
 
   async get<T>(path: string, params: Record<string, string | string[]> = {}): Promise<T> {

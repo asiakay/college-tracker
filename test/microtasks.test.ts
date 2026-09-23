@@ -53,6 +53,20 @@ describe("GET /api/microtasks", () => {
     expect((await board()).tasks.map((t) => t.id)).toContain(other);
   });
 
+  it("includes Canvas links for the assignment and its course", async () => {
+    const id = await addTask("t");
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO canvas_courses (canvas_host, canvas_id, local_course_id, sync_enabled, name, html_url, content_hash, first_seen_at, last_seen_at, last_changed_at)
+        VALUES ('s.instructure.com','101','SCI-133-F26',1,'Env','https://s.instructure.com/courses/101','h','x','x','x')`),
+    ]);
+    let task = (await board()).tasks.find((t) => t.id === id) as unknown as Record<string, unknown>;
+    expect(task).toMatchObject({ canvas_url: null, canvas_course_url: "https://s.instructure.com/courses/101", canvas_course_id: "101" });
+    await env.DB.prepare(`INSERT INTO canvas_assignments (canvas_host, canvas_id, canvas_course_id, local_assignment_id, link_method, name, html_url, content_hash, first_seen_at, last_seen_at, last_changed_at)
+      VALUES ('s.instructure.com','9','101','A1','manual','Lab 1','https://s.instructure.com/courses/101/assignments/9','h','x','x','x')`).run();
+    task = (await board()).tasks.find((t) => t.id === id) as unknown as Record<string, unknown>;
+    expect(task["canvas_url"]).toBe("https://s.instructure.com/courses/101/assignments/9");
+  });
+
   it("reports progress per assignment", async () => {
     const [x, y] = [await addTask("x"), await addTask("y")];
     await addTask("z");

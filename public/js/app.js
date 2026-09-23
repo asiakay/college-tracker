@@ -242,6 +242,19 @@ function renderTasks() {
   initTaskSortables();
 }
 
+/** Where a pick should take the student in Canvas: the assignment, else its course. */
+function pickCanvasLinks(t) {
+  if (!t) return '';
+  if (t.canvas_url) {
+    return `<a class="mt-open-canvas" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`;
+  }
+  if (!t.canvas_course_url) return '';
+  return `<a class="mt-open-canvas secondary" href="${esc(t.canvas_course_url)}" target="_blank" rel="noopener">Canvas course ↗</a>
+    <button type="button" class="mt-link-btn" data-asn="${esc(t.assignment_id)}" data-ccid="${esc(t.canvas_course_id)}"
+      title="This assignment isn't linked to its Canvas assignment yet">Link to Canvas assignment…</button>
+    <span class="mt-link-slot"></span>`;
+}
+
 function renderSuggestions() {
   const el = document.getElementById('mt-suggest');
   if (!el) return;
@@ -249,8 +262,45 @@ function renderSuggestions() {
   el.hidden = false;
   el.innerHTML = `<div class="mt-suggest-head">Claude suggests</div><ol>${mtPicks.map(p => {
     const t = mtTasks.find(x => x.id === p.task_id);
-    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div></li>`;
+    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div><div class="mt-suggest-links">${pickCanvasLinks(t)}</div></li>`;
   }).join('')}</ol>`;
+  el.querySelectorAll('.mt-link-btn').forEach(btn => btn.addEventListener('click', () => showCanvasLinker(btn)));
+}
+
+/** Let the student link an unlinked assignment to its Canvas assignment, then keep the picks. */
+async function showCanvasLinker(btn) {
+  const slot = btn.nextElementSibling;
+  btn.disabled = true;
+  let list;
+  try {
+    const res = await get(`/api/canvas/assignments?canvas_course_id=${encodeURIComponent(btn.dataset.ccid)}`);
+    if (res.error) throw new Error(res.error);
+    list = (res.assignments || []).filter(a => !a.removed_at);
+  } catch (e) {
+    btn.disabled = false;
+    if (e.message !== 'Unauthorized') toast(`Couldn't load Canvas assignments: ${e.message}`, 'fail');
+    return;
+  }
+  if (!list.length) { btn.disabled = false; toast('No Canvas assignments synced for this course yet — run Sync now', 'fail'); return; }
+  const task = mtTasks.find(t => t.assignment_id === btn.dataset.asn);
+  slot.innerHTML = `<select class="mt-link-select" aria-label="Canvas assignment">
+      ${list.map(a => `<option value="${esc(a.canvas_id)}"${task && a.due_date_local === task.due_date ? ' selected' : ''}>${esc(a.name)}${a.due_date_local ? ` — due ${fmt(a.due_date_local)}` : ''}</option>`).join('')}
+    </select> <button type="button" class="mt-link-save">Link</button>`;
+  slot.querySelector('.mt-link-save').addEventListener('click', async () => {
+    const canvasId = slot.querySelector('.mt-link-select').value;
+    try {
+      const res = await post(`/api/canvas/assignments/${encodeURIComponent(canvasId)}/link`, { assignment_id: btn.dataset.asn });
+      if (res.error) throw new Error(res.error);
+      toast('Linked to Canvas ✓');
+      const keep = mtPicks;
+      await loadTasks();
+      mtPicks = keep;
+      renderTasks();
+      renderSuggestions();
+    } catch (e) {
+      if (e.message !== 'Unauthorized') toast(`Couldn't link: ${e.message}`, 'fail');
+    }
+  });
 }
 
 async function suggestNextTask() {

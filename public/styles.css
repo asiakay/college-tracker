@@ -1026,3 +1026,14 @@ a:hover { text-decoration: underline; }
   border-radius: 8px; padding: 1px 6px; margin-right: 2px; vertical-align: 1px;
 }
 .mt-pick-2 .mt-pick-badge, .mt-pick-3 .mt-pick-badge { background: var(--accent-dim); color: var(--accent); }
+.mt-suggest-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.mt-open-canvas {
+  display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; text-decoration: none;
+  color: #fff; background: rgb(228,112,70); border-radius: 6px; padding: 3px 9px;
+}
+.mt-open-canvas.secondary { background: rgba(228,112,70,0.12); color: rgb(236,140,100); }
+.mt-link-btn, .mt-link-save {
+  font-family: inherit; font-size: 12px; color: var(--ink-mid); background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; cursor: pointer;
+}
+.mt-link-select { font-size: 12px; max-width: 280px; background: var(--surface2); color: var(--ink); border: 1px solid var(--border); border-radius: 6px; padding: 3px; }

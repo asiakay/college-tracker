@@ -88,6 +88,7 @@ export async function listMicrotasks(env: Env, url: URL) {
               t.assignment_id, t.okr_id,
               a.title AS assignment_title, a.due_date, a.status AS assignment_status, a.course_id,
               c.name AS course_name, ca.html_url AS canvas_url,
+              cc.html_url AS canvas_course_url, cc.canvas_id AS canvas_course_id,
               p.position,
               (SELECT MAX(e.at) FROM task_events e WHERE e.task_id = t.id) AS last_moved_at,
               (SELECT MAX(e.at) FROM task_events e WHERE e.task_id = t.id AND e.to_status = 'Done') AS done_at
@@ -95,6 +96,7 @@ export async function listMicrotasks(env: Env, url: URL) {
        LEFT JOIN assignments a ON a.id = t.assignment_id
        LEFT JOIN courses c ON c.id = a.course_id
        LEFT JOIN canvas_assignments ca ON ca.local_assignment_id = a.id
+       LEFT JOIN canvas_courses cc ON cc.local_course_id = a.course_id
        LEFT JOIN task_positions p ON p.task_id = t.id
        WHERE ${ACADEMIC}${f.sql}
      ) x

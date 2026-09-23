@@ -11,7 +11,9 @@
  */
 
 import type { Env } from "../env";
-import type { CanvasAssignmentJson, CanvasCourseJson, CanvasProfileJson, CanvasReader } from "./types";
+import type {
+  CanvasAssignmentJson, CanvasCourseJson, CanvasModuleItemJson, CanvasModuleJson, CanvasProfileJson, CanvasReader,
+} from "./types";
 
 export type CanvasErrorKind =
   | "config" | "auth" | "forbidden" | "not_found" | "rate_limited"
@@ -135,6 +137,26 @@ export class CanvasClient implements CanvasReader {
     return this.getAll<CanvasAssignmentJson>(
       `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/assignments`,
       { order_by: "due_at", "include[]": ["submission"] },
+    );
+  }
+
+  /** Modules with their items; fetches items separately where Canvas left them out. */
+  async listModules(canvasCourseId: string): Promise<CanvasModuleJson[]> {
+    const course = encodeURIComponent(canvasCourseId);
+    const modules = await this.getAll<CanvasModuleJson>(`/api/v1/courses/${course}/modules`, { "include[]": ["items"] });
+    for (const m of modules) {
+      if (!Array.isArray(m.items)) {
+        m.items = await this.getAll<CanvasModuleItemJson>(
+          `/api/v1/courses/${course}/modules/${encodeURIComponent(m.id)}/items`,
+        );
+      }
+    }
+    return modules;
+  }
+
+  getModuleItem(canvasCourseId: string, moduleId: string, itemId: string): Promise<CanvasModuleItemJson> {
+    return this.get<CanvasModuleItemJson>(
+      `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/modules/${encodeURIComponent(moduleId)}/items/${encodeURIComponent(itemId)}`,
     );
   }
 

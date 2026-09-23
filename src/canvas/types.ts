@@ -54,6 +54,24 @@ export interface CanvasAssignmentJson {
   submission?: CanvasSubmissionJson | null;
 }
 
+export interface CanvasModuleItemJson {
+  id: string;
+  module_id?: string;
+  title?: string | null;
+  type?: string | null; // File | Page | Assignment | Quiz | ExternalUrl | SubHeader | ...
+  html_url?: string | null;
+  published?: boolean | null;
+}
+
+export interface CanvasModuleJson {
+  id: string;
+  name?: string | null;
+  position?: number | null;
+  items_count?: number | null;
+  /** With include[]=items; Canvas omits it when a module has too many items. */
+  items?: CanvasModuleItemJson[] | null;
+}
+
 /**
  * Everything the sync needs from Canvas. The HTTP client implements it;
  * tests substitute a fake so reconciliation logic never touches fetch().

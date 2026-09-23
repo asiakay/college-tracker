@@ -235,7 +235,7 @@ function renderTasks() {
       ? items.map(renderTaskCard).join('')
       : `<div class="mt-empty">${status === 'To Do' ? 'Nothing queued. Use “Break down →” on an assignment.' : 'Drop tasks here'}</div>`;
   });
-  document.querySelectorAll('#view-tasks .mt-card .mt-link-btn').forEach(btn => btn.addEventListener('click', () => showCanvasLinker(btn)));
+  document.querySelectorAll('#view-tasks .mt-card .mt-card-links').forEach(bindCanvasLinkers);
   document.querySelectorAll('#view-tasks .mt-move').forEach(sel => {
     sel.addEventListener('change', () => {
       const id = Number(sel.closest('.mt-card').dataset.id);
@@ -245,19 +245,81 @@ function renderTasks() {
   initTaskSortables();
 }
 
-/** Where a pick should take the student in Canvas: the assignment, else its course. */
+/** Where a pick should take the student in Canvas: the chosen module file, the assignment, else the course. */
 function pickCanvasLinks(t) {
   if (!t) return '';
-  if (t.canvas_url) {
-    return `<a class="mt-open-canvas" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`;
+  const links = [];
+  if (t.canvas_material_url) {
+    links.push(`<a class="mt-open-canvas" href="${esc(t.canvas_material_url)}" target="_blank" rel="noopener" title="Open the linked Canvas material">📄 ${esc(t.canvas_material_title || 'Material')} ↗</a>`);
   }
-  if (!t.canvas_course_url) return '';
-  // Many courses post work as files in Modules rather than as Canvas assignments.
-  const modules = `${String(t.canvas_course_url).replace(/\/+$/, '')}/modules`;
-  return `<a class="mt-open-canvas secondary" href="${esc(modules)}" target="_blank" rel="noopener">Course modules ↗</a>
-    <button type="button" class="mt-link-btn" data-asn="${esc(t.assignment_id)}" data-ccid="${esc(t.canvas_course_id)}"
-      title="This assignment isn't linked to its Canvas assignment yet">Link to Canvas assignment…</button>
-    <span class="mt-link-slot"></span>`;
+  if (t.canvas_url) {
+    links.push(`<a class="mt-open-canvas${t.canvas_material_url ? ' secondary' : ''}" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`);
+  }
+  if (!t.canvas_course_url) return links.join(' ');
+  if (!t.canvas_material_url && !t.canvas_url) {
+    // Many courses post work as files in Modules rather than as Canvas assignments.
+    const modules = `${String(t.canvas_course_url).replace(/\/+$/, '')}/modules`;
+    links.push(`<a class="mt-open-canvas secondary" href="${esc(modules)}" target="_blank" rel="noopener">Course modules ↗</a>`);
+  }
+  if (t.assignment_id) {
+    const data = `data-asn="${esc(t.assignment_id)}" data-ccid="${esc(t.canvas_course_id)}"`;
+    links.push(`<button type="button" class="mt-link-btn" data-kind="material" ${data}
+      title="Choose the file or page in Canvas Modules for this assignment">${t.canvas_material_url ? 'Change file…' : 'Link module file…'}</button>`);
+    if (!t.canvas_url) {
+      links.push(`<button type="button" class="mt-link-btn" data-kind="assignment" ${data}
+        title="This assignment isn't linked to its Canvas assignment yet">Link to Canvas assignment…</button>`);
+    }
+    links.push('<span class="mt-link-slot"></span>');
+  }
+  return links.join(' ');
+}
+
+function bindCanvasLinkers(root) {
+  root.querySelectorAll('.mt-link-btn').forEach(btn => btn.addEventListener('click', () =>
+    (btn.dataset.kind === 'material' ? showMaterialLinker(btn) : showCanvasLinker(btn))));
+}
+
+/** Reload the board after a link change without losing Claude's picks. */
+async function reloadKeepingPicks() {
+  const keep = mtPicks;
+  await loadTasks();
+  mtPicks = keep;
+  renderTasks();
+  renderSuggestions();
+}
+
+/** Let the student pick the Canvas module item (usually a file) that holds this assignment's material. */
+async function showMaterialLinker(btn) {
+  const slot = btn.parentElement.querySelector('.mt-link-slot');
+  btn.disabled = true;
+  let modules;
+  try {
+    const res = await get(`/api/canvas/courses/${encodeURIComponent(btn.dataset.ccid)}/modules`);
+    if (res.error) throw new Error(res.error);
+    modules = (res.modules || []).filter(m => m.items.length);
+  } catch (e) {
+    btn.disabled = false;
+    if (e.message !== 'Unauthorized') toast(`Couldn't load Canvas modules: ${e.message}`, 'fail');
+    return;
+  }
+  if (!modules.length) { btn.disabled = false; toast('This Canvas course has no module items', 'fail'); return; }
+  slot.innerHTML = `<select class="mt-link-select" aria-label="Canvas module item">
+      ${modules.map(m => `<optgroup label="${esc(m.name)}">${m.items.map(i =>
+        `<option value="${esc(m.id)}:${esc(i.id)}">${i.type === 'File' ? '📄 ' : ''}${esc(i.title)}</option>`).join('')}</optgroup>`).join('')}
+    </select> <button type="button" class="mt-link-save">Link</button>`;
+  slot.querySelector('.mt-link-save').addEventListener('click', async () => {
+    const [moduleId, itemId] = slot.querySelector('.mt-link-select').value.split(':');
+    try {
+      const res = await post('/api/canvas/materials', {
+        assignment_id: btn.dataset.asn, canvas_course_id: btn.dataset.ccid, module_id: moduleId, item_id: itemId,
+      });
+      if (res.error) throw new Error(res.error);
+      toast(`Linked “${res.title}” ✓`);
+      await reloadKeepingPicks();
+    } catch (e) {
+      if (e.message !== 'Unauthorized') toast(`Couldn't link: ${e.message}`, 'fail');
+    }
+  });
 }
 
 function renderSuggestions() {
@@ -269,12 +331,12 @@ function renderSuggestions() {
     const t = mtTasks.find(x => x.id === p.task_id);
     return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div><div class="mt-suggest-links">${pickCanvasLinks(t)}</div></li>`;
   }).join('')}</ol>`;
-  el.querySelectorAll('.mt-link-btn').forEach(btn => btn.addEventListener('click', () => showCanvasLinker(btn)));
+  bindCanvasLinkers(el);
 }
 
 /** Let the student link an unlinked assignment to its Canvas assignment, then keep the picks. */
 async function showCanvasLinker(btn) {
-  const slot = btn.nextElementSibling;
+  const slot = btn.parentElement.querySelector('.mt-link-slot');
   btn.disabled = true;
   let list;
   try {
@@ -297,11 +359,7 @@ async function showCanvasLinker(btn) {
       const res = await post(`/api/canvas/assignments/${encodeURIComponent(canvasId)}/link`, { assignment_id: btn.dataset.asn });
       if (res.error) throw new Error(res.error);
       toast('Linked to Canvas ✓');
-      const keep = mtPicks;
-      await loadTasks();
-      mtPicks = keep;
-      renderTasks();
-      renderSuggestions();
+      await reloadKeepingPicks();
     } catch (e) {
       if (e.message !== 'Unauthorized') toast(`Couldn't link: ${e.message}`, 'fail');
     }

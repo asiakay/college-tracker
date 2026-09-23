@@ -6,8 +6,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test",
-    "db:migrate:remote": "wrangler d1 execute college-tracker --remote --file=migrations/0003_college_and_okr_matrix.sql && wrangler d1 execute college-tracker --remote --file=migrations/0004_courses_credits.sql",
-    "db:migrate:local": "wrangler d1 execute college-tracker --local --file=migrations/0003_college_and_okr_matrix.sql && wrangler d1 execute college-tracker --local --file=migrations/0004_courses_credits.sql",
+    "db:migrate:remote": "wrangler d1 execute repo-dashboard-work-items --remote --file",
+    "db:migrate:local": "wrangler d1 execute repo-dashboard-work-items --local --file",
     "test": "vitest run"
   },
   "devDependencies": {

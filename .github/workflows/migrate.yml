@@ -1,0 +1,36 @@
+name: Apply D1 Migration
+
+# Run manually from Actions → "Apply D1 Migration" → Run workflow.
+# Migrations are applied one file at a time because the shared D1 database
+# (repo-dashboard-work-items) is not tracked by wrangler's migrations table.
+#
+# Required GitHub secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "Migration file (e.g. migrations/0008_canvas_sync.sql)"
+        required: true
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate migration path
+        env:
+          FILE: ${{ inputs.file }}
+        run: |
+          if ! [[ "$FILE" =~ ^migrations/[0-9]{4}_[a-z0-9_]+\.sql$ ]] || [ ! -f "$FILE" ]; then
+            echo "Invalid migration file: $FILE"
+            exit 1
+          fi
+
+      - name: Apply migration to D1
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 execute repo-dashboard-work-items --remote --file ${{ inputs.file }}

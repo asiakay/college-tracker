@@ -44,6 +44,7 @@ export interface SyncSummary {
   undated: Array<{ canvas_id: string; canvas_course_id: string; name: string; local_assignment_id: string | null }>;
   possible_duplicates: Array<{ canvas_id: string; canvas_course_id: string; name: string; local_candidates: string[] }>;
   errors: Array<{ canvas_course_id?: string; kind: string; message: string }>;
+  warnings: string[];
   canvas_requests?: number;
   rate_limit_remaining?: number | null;
 }
@@ -66,6 +67,7 @@ function emptySummary(): SyncSummary {
     undated: [],
     possible_duplicates: [],
     errors: [],
+    warnings: [],
   };
 }
 
@@ -101,9 +103,7 @@ export async function runCanvasSync(db: D1Database, reader: CanvasReader, opts: 
   let fatal: string | null = null;
 
   try {
-    const profile = await reader.getProfile();
-    const timeZone = isValidTimeZone(opts.timeZoneOverride) ? opts.timeZoneOverride
-      : isValidTimeZone(profile.time_zone) ? profile.time_zone : "UTC";
+    const timeZone = await resolveTimeZone(reader, opts.timeZoneOverride, summary);
     summary.timezone = timeZone;
 
     // Each run stamps last_seen_at with its own start time; rows not stamped
@@ -149,6 +149,26 @@ export async function runCanvasSync(db: D1Database, reader: CanvasReader, opts: 
   ]);
 
   return { locked: false, run_id: runId, status, summary };
+}
+
+/**
+ * The profile is only needed for the student's time zone, and some schools
+ * block it for students. A denied or missing profile falls back to UTC with a
+ * warning; a rejected token (401) is still fatal.
+ */
+async function resolveTimeZone(
+  reader: CanvasReader, override: string | undefined, summary: SyncSummary,
+): Promise<string> {
+  if (isValidTimeZone(override)) return override;
+  try {
+    const profile = await reader.getProfile();
+    if (isValidTimeZone(profile.time_zone)) return profile.time_zone;
+    summary.warnings.push("Your Canvas profile has no time zone; using UTC. Set CANVAS_TIMEZONE (e.g. America/Los_Angeles) so due dates land on the right day.");
+  } catch (e) {
+    if (!(e instanceof CanvasError && (e.kind === "forbidden" || e.kind === "not_found"))) throw e;
+    summary.warnings.push(`Couldn't read your Canvas profile time zone (${e.status}); using UTC. Set CANVAS_TIMEZONE (e.g. America/Los_Angeles) so due dates land on the right day.`);
+  }
+  return "UTC";
 }
 
 async function syncCourses(

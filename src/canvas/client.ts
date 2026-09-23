@@ -85,6 +85,22 @@ export interface CanvasClientOptions {
 
 const ACCEPT = "application/json+canvas-string-ids";
 const LOW_QUOTA = 100;
+const USER_AGENT = "college-tracker-canvas-sync";
+
+/** Canvas's own error text from a JSON error body, e.g. "user not authorized to perform that action". */
+export function canvasErrorDetail(body: string): string {
+  let msg = "";
+  try {
+    const j = JSON.parse(body) as { errors?: unknown; message?: unknown };
+    if (Array.isArray(j.errors)) {
+      msg = j.errors.map((e) => (e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "")).filter(Boolean).join("; ");
+    } else if (typeof j.message === "string") {
+      msg = j.message;
+    }
+  } catch { /* not JSON — no detail */ }
+  msg = msg.replace(/\s+/g, " ").trim().slice(0, 200);
+  return msg ? `: ${msg}` : "";
+}
 
 export class CanvasClient implements CanvasReader {
   requestCount = 0;
@@ -172,7 +188,7 @@ export class CanvasClient implements CanvasReader {
       try {
         res = await this.fetchFn(url, {
           method: "GET",
-          headers: { Accept: ACCEPT, Authorization: `Bearer ${this.cfg.token}` },
+          headers: { Accept: ACCEPT, Authorization: `Bearer ${this.cfg.token}`, "User-Agent": USER_AGENT },
           redirect: "manual",
         });
       } catch {
@@ -196,9 +212,10 @@ export class CanvasClient implements CanvasReader {
           rateLimited ? "rate_limited" : "http", res.status,
         );
       }
-      if (res.status === 401) throw new CanvasError("Canvas rejected the access token (401)", "auth", 401);
-      if (res.status === 403) throw new CanvasError(`Canvas denied access to ${path} (403)`, "forbidden", 403);
-      if (res.status === 404) throw new CanvasError(`Canvas ${path} not found (404)`, "not_found", 404);
+      const detail = canvasErrorDetail(body);
+      if (res.status === 401) throw new CanvasError(`Canvas rejected the access token (401)${detail}`, "auth", 401);
+      if (res.status === 403) throw new CanvasError(`Canvas denied access to ${path} (403)${detail}`, "forbidden", 403);
+      if (res.status === 404) throw new CanvasError(`Canvas ${path} not found (404)${detail}`, "not_found", 404);
       throw new CanvasError(`Canvas ${path} failed with ${res.status}`, "http", res.status);
     }
   }

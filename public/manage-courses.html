@@ -1463,6 +1463,7 @@
     if (!summary) { el.innerHTML = ''; return; }
     const items = [];
     (summary.errors || []).forEach(e => items.push(`⚠ ${esc(e.canvas_course_id ? `Course ${e.canvas_course_id}: ` : '')}${esc(e.message)}`));
+    (summary.warnings || []).forEach(w => items.push(`ℹ ${esc(w)}`));
     (summary.possible_duplicates || []).forEach(d =>
       items.push(`Possible duplicate: “${esc(d.name)}” (Canvas ${esc(d.canvas_id)}) ↔ ${d.local_candidates.map(esc).join(', ')}`));
     (summary.undated || []).filter(u => !u.local_assignment_id).forEach(u =>

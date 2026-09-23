@@ -48,6 +48,16 @@ describe("CanvasClient", () => {
     expect(calls[0]!.method).toBe("GET");
     expect(calls[0]!.headers.get("accept")).toBe("application/json+canvas-string-ids");
     expect(calls[0]!.headers.get("authorization")).toBe("Bearer secret-token");
+    expect(calls[0]!.headers.get("user-agent")).toBe("college-tracker-canvas-sync");
+  });
+
+  it("includes Canvas's own error message on a 403, never the token", async () => {
+    const body = JSON.stringify({ status: "unauthorized", errors: [{ message: "user not authorized to perform that action" }] });
+    const client = new CanvasClient(cfg, { sleep: noSleep, fetch: async () => new Response(body, { status: 403 }) });
+    const e = await client.getProfile().catch((x) => x);
+    expect(e).toMatchObject({ kind: "forbidden", status: 403 });
+    expect(e.message).toBe("Canvas denied access to /api/v1/users/self/profile (403): user not authorized to perform that action");
+    expect(e.message).not.toContain("secret-token");
   });
 
   it("follows pagination across pages", async () => {

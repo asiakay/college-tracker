@@ -2,7 +2,8 @@
  * college-tracker Worker — JSON-RPC 2.0 MCP endpoint at POST /mcp
  *
  * Binds to the shared repo-dashboard-work-items D1 database.
- * Auth: Bearer token matching env.MCP_SECRET_TOKEN (open when unset).
+ * Auth (src/auth.ts): bearer MCP_SECRET_TOKEN, or a verified Cloudflare Access
+ * login once CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD are set; open when neither.
  *
  * Tools:
  *   log_academic_task      — log a micro-task against an OKR, optionally linked to an assignment
@@ -13,7 +14,7 @@
  *   canvas_sync_status     — Canvas configuration + last sync run
  */
 
-import { isWriteAuthorized } from "./auth";
+import { isWriteAuthorized, requiresLogin } from "./auth";
 import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
 import { listMicrotasks, promoteAssignmentStmt, recordTaskCreated, saveColumn } from "./microtasks";
@@ -349,6 +350,12 @@ export default {
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
+    }
+
+    // Once Cloudflare Access is configured, every API read and write needs a
+    // verified Access login (or the bearer token used by MCP clients).
+    if (requiresLogin(env, url.pathname) && !(await isWriteAuthorized(request, env))) {
+      return new Response(JSON.stringify({ error: "Unauthorized — sign in through Cloudflare Access" }), { status: 401, headers: CORS });
     }
 
     if (url.pathname === "/api/health" && request.method === "GET") {
@@ -755,7 +762,7 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
     // the user never types a token) or a Bearer token (API / MCP callers).
     const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
     if (genTasksMatch && request.method === "POST") {
-      if (!isWriteAuthorized(request, env)) {
+      if (!(await isWriteAuthorized(request, env))) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       }
       const assignmentId = genTasksMatch[1];
@@ -798,7 +805,7 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
     }
     // Same auth as "Break down →": open when no token, else bearer or Cloudflare Access.
     if (url.pathname === "/api/microtasks/column" && request.method === "PUT") {
-      if (!isWriteAuthorized(request, env)) {
+      if (!(await isWriteAuthorized(request, env))) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       }
       let body: Record<string, unknown>;
@@ -815,11 +822,8 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
 
     const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method);
     if (isWrite && url.pathname.startsWith("/api/")) {
-      if (env.MCP_SECRET_TOKEN) {
-        const auth = request.headers.get("Authorization") ?? "";
-        if (auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
-          return err(null, -32000, "Unauthorized", 401);
-        }
+      if (!(await isWriteAuthorized(request, env))) {
+        return err(null, -32000, "Unauthorized", 401);
       }
 
       let body: Record<string, unknown> = {};
@@ -943,11 +947,8 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
     }
 
     // Auth check
-    if (env.MCP_SECRET_TOKEN) {
-      const auth = request.headers.get("Authorization") ?? "";
-      if (auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
-        return err(null, -32000, "Unauthorized", 401);
-      }
+    if (!(await isWriteAuthorized(request, env))) {
+      return err(null, -32000, "Unauthorized", 401);
     }
 
     let body: { jsonrpc?: string; id?: unknown; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };

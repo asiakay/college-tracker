@@ -23,6 +23,26 @@ npm run db:migrate:remote -- migrations/0008_canvas_sync.sql
 
 or run the **Apply D1 Migration** workflow in GitHub Actions with the file path.
 
+## Login (Cloudflare Access)
+
+The site is open until Cloudflare Access is turned on. Once
+`CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are set, every `/api/*` route
+(except `/api/health`) and `/mcp` require either a verified Access login or
+`Authorization: Bearer $MCP_SECRET_TOKEN`. The Worker checks the Access JWT's
+signature, audience, issuer and expiry itself; header presence alone is never
+trusted.
+
+1. Workers & Pages → college-tracker → Settings → Domains & Routes →
+   `workers.dev` → enable **Cloudflare Access**.
+2. Zero Trust → Access → Applications → that application: add an **Allow**
+   policy for your email. Copy the **Application Audience (AUD) tag** and your
+   team domain (`<team>.cloudflareaccess.com`).
+3. For GitHub Actions: Zero Trust → Access → Service Auth → create a service
+   token, add a **Service Auth** policy for it on the application, and save the
+   Client ID / Secret as repo secrets `CF_ACCESS_CLIENT_ID` and
+   `CF_ACCESS_CLIENT_SECRET`. The workflows send them automatically.
+4. Add Worker secrets `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`, then Deploy.
+
 ## Canvas LMS sync
 
 Canvas is the source of truth for institutional facts (courses, published

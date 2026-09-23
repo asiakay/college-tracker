@@ -79,7 +79,7 @@ function localCourseIdFor(courseCode: string | null, canvasId: string): string {
 }
 
 export async function handleCanvasRoute(request: Request, env: Env, url: URL): Promise<Response> {
-  if (!isWriteAuthorized(request, env)) return json({ error: "Unauthorized" }, 401);
+  if (!(await isWriteAuthorized(request, env))) return json({ error: "Unauthorized" }, 401);
 
   const path = url.pathname;
   const method = request.method;

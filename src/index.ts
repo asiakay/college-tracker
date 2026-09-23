@@ -9,13 +9,13 @@
  *   get_upcoming_deadlines — assignments due in the next N days
  *   get_degree_progress    — OKR progress matrix (assignments + micro-tasks)
  *   get_daily_summary      — all tasks logged on a given date across all repos
+ *   canvas_sync            — run a read-only Canvas LMS sync
+ *   canvas_sync_status     — Canvas configuration + last sync run
  */
 
-export interface Env {
-  DB: D1Database;
-  MCP_SECRET_TOKEN?: string;
-  ANTHROPIC_API_KEY?: string;
-}
+import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
+import type { Env } from "./env";
+export type { Env } from "./env";
 
 const CORS = {
   "Content-Type": "application/json",
@@ -161,6 +161,16 @@ Rules:
   return JSON.parse(json) as GeneratedTask[];
 }
 
+// ── Canvas fields on assignment reads ───────────────────────────────────────
+// At most one canvas_assignments row links to a local assignment (unique
+// index), so this LEFT JOIN never duplicates rows.
+
+const CANVAS_COLUMNS = `,
+  CASE WHEN ca.id IS NULL THEN 'manual' ELSE 'canvas' END AS source,
+  ca.due_at AS canvas_due_at, ca.points_possible AS canvas_points, ca.html_url AS canvas_url,
+  CASE WHEN ca.id IS NULL THEN NULL WHEN ca.removed_at IS NOT NULL THEN 'removed' ELSE 'active' END AS canvas_state`;
+const CANVAS_JOIN = ` LEFT JOIN canvas_assignments ca ON ca.local_assignment_id = a.id`;
+
 // ── Tool definitions ─────────────────────────────────────────────────────────
 
 const TOOLS = [
@@ -208,6 +218,16 @@ const TOOLS = [
     },
   },
   {
+    name: "canvas_sync",
+    description: "Run a read-only Canvas LMS sync now (courses + assignments for linked, enabled courses). Returns the run summary.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "canvas_sync_status",
+    description: "Canvas LMS sync configuration and the most recent run summary.",
+    inputSchema: { type: "object", properties: {}, required: [] },
+  },
+  {
     name: "get_daily_summary",
     description: "All micro-tasks logged on a given date (defaults to UTC today).",
     inputSchema: {
@@ -245,10 +265,11 @@ async function handleLogAcademicTask(env: Env, args: Record<string, unknown>) {
      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`
   ).bind(description, okr_id, assignment_id, source_repo, time_spent, status, notes).first();
 
-  // Auto-submit the assignment when a Done task is logged against it
+  // Finishing a micro-task means work has started — it never means the
+  // assignment was submitted. Submission is an institutional fact (Canvas).
   if (status === "Done" && assignment_id) {
     await env.DB.prepare(
-      `UPDATE assignments SET status = 'Submitted' WHERE id = ? AND status = 'Not Started'`
+      `UPDATE assignments SET status = 'In Progress' WHERE id = ? AND status = 'Not Started'`
     ).bind(assignment_id).run();
   }
 
@@ -260,10 +281,10 @@ async function handleGetUpcomingDeadlines(env: Env, args: Record<string, unknown
   const { results } = await env.DB.prepare(
     `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.notes,
             c.id AS course_id, c.name AS course_name, c.term,
-            o.id AS okr_id, o.objective, o.key_result
+            o.id AS okr_id, o.objective, o.key_result${CANVAS_COLUMNS}
      FROM assignments a
      JOIN courses c ON c.id = a.course_id
-     JOIN okrs o ON o.id = a.okr_id
+     JOIN okrs o ON o.id = a.okr_id${CANVAS_JOIN}
      WHERE a.due_date BETWEEN DATE('now') AND DATE('now', '+' || ? || ' days')
        AND a.status != 'Graded'
      ORDER BY a.due_date ASC`
@@ -313,6 +334,15 @@ async function handleGetDailySummary(env: Env, args: Record<string, unknown>) {
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 export default {
+  // Cron (wrangler.toml [triggers]) — same sync as POST /api/canvas/sync.
+  // Does nothing, and touches no tables, until Canvas is configured.
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    const result = await runConfiguredSync(env, "cron");
+    if ("error" in result) console.log(`Canvas sync skipped: ${result.error}`);
+    else if (result.locked) console.log("Canvas sync skipped: another run is in progress");
+    else console.log(`Canvas sync run ${result.run_id}: ${result.status}`);
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
@@ -322,6 +352,11 @@ export default {
 
     if (url.pathname === "/api/health" && request.method === "GET") {
       return new Response(JSON.stringify({ status: "ok", service: "college-tracker" }), { headers: CORS });
+    }
+
+    // ── Canvas LMS sync (all routes bearer-authenticated) ─────────────────────
+    if (url.pathname.startsWith("/api/canvas/")) {
+      return handleCanvasRoute(request, env, url);
     }
 
     // ── REST: read routes (open) ──────────────────────────────────────────────
@@ -341,10 +376,10 @@ export default {
         `SELECT a.id, a.title, a.due_date, a.deliverable_type, a.weight_pct, a.status, a.grade, a.notes, a.blocker,
                 a.course_id, a.okr_id,
                 c.name AS course_name, c.term,
-                o.objective, o.key_result
+                o.objective, o.key_result${CANVAS_COLUMNS}
          FROM assignments a
          JOIN courses c ON c.id = a.course_id
-         LEFT JOIN okrs o ON o.id = a.okr_id
+         LEFT JOIN okrs o ON o.id = a.okr_id${CANVAS_JOIN}
          WHERE (a.due_date IS NULL OR a.due_date <= DATE('now', '+' || ? || ' days'))
            AND a.status NOT IN ('Submitted', 'Graded')
          ORDER BY a.due_date ASC`
@@ -393,8 +428,8 @@ export default {
       if (status)    { clauses.push("a.status = ?");    binds.push(status); }
       const where = clauses.length ? " WHERE " + clauses.join(" AND ") : "";
       const { results } = await env.DB.prepare(
-        `SELECT a.*, c.name AS course_name, c.term FROM assignments a
-         JOIN courses c ON c.id = a.course_id${where}
+        `SELECT a.*, c.name AS course_name, c.term${CANVAS_COLUMNS} FROM assignments a
+         JOIN courses c ON c.id = a.course_id${CANVAS_JOIN}${where}
          ORDER BY a.due_date ASC`
       ).bind(...binds).all();
       return new Response(JSON.stringify({ assignments: results }), { headers: CORS });
@@ -860,7 +895,18 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       const asnMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
       if (asnMatch && request.method === "PUT") {
         const asnId = asnMatch[1];
-        const { status, due_date, blocker, grade = null, notes = null } = body as Record<string, unknown>;
+        const { status, due_date, blocker, grade, notes } = body as Record<string, unknown>;
+        if (due_date !== undefined) {
+          const linked = await env.DB.prepare(
+            "SELECT 1 FROM canvas_assignments WHERE local_assignment_id = ?"
+          ).bind(asnId).first();
+          if (linked) {
+            return new Response(
+              JSON.stringify({ error: "due_date is managed by Canvas for this assignment" }),
+              { status: 409, headers: CORS }
+            );
+          }
+        }
         const fields: string[] = [];
         const vals: unknown[] = [];
         if (status   !== undefined) { fields.push("status = ?");   vals.push(status); }
@@ -919,6 +965,11 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       else if (name === "get_upcoming_deadlines") result = await handleGetUpcomingDeadlines(env, args);
       else if (name === "get_degree_progress")    result = await handleGetDegreeProgress(env, args);
       else if (name === "get_daily_summary")      result = await handleGetDailySummary(env, args);
+      else if (name === "canvas_sync" || name === "canvas_sync_status") {
+        // Canvas tools are never open, even when /mcp itself is.
+        if (!env.MCP_SECRET_TOKEN) return err(id, -32000, "Canvas tools require MCP_SECRET_TOKEN to be configured");
+        result = name === "canvas_sync" ? await runConfiguredSync(env, "mcp") : await getCanvasStatus(env);
+      }
       else return err(id, -32601, `Tool not found: ${name}`);
 
       return ok(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });

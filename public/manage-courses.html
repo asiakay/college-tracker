@@ -353,6 +353,16 @@
   .toast.error   { background: var(--error-dim);   border-color: var(--error);   color: var(--error);   display: flex; }
   .toast.info    { background: var(--accent-dim);  border-color: var(--accent);  color: var(--accent);  display: flex; }
 
+  /* ── Canvas sync ── */
+  .canvas-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--muted); }
+  .canvas-status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .canvas-course { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .canvas-course-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .canvas-course-row select { flex: 1; min-width: 180px; }
+  .canvas-course a { color: var(--accent); text-decoration: none; }
+  .canvas-findings { font-size: 12px; margin: 0; padding-left: 18px; }
+  .chip-canvas { background: rgba(228,112,70,0.12); color: rgb(236,140,100); border: 1px solid rgba(228,112,70,0.3); }
+
   .loading-row { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
   .empty-row   { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
 
@@ -388,6 +398,20 @@
   <div id="courseList">
     <div class="loading-row"><span class="spinner"></span>Loading…</div>
   </div>
+</div>
+
+<!-- Canvas LMS sync -->
+<div class="card" id="canvasCard">
+  <div class="card-header">Canvas Sync</div>
+  <div class="canvas-body">
+    <div class="canvas-status-row">
+      <span id="canvasStatus">Loading…</span>
+      <button type="button" class="btn-save" id="canvasSyncBtn" disabled>Sync now</button>
+    </div>
+    <div class="toast" id="canvasToast"></div>
+    <div id="canvasFindings"></div>
+  </div>
+  <div id="canvasCourses"></div>
 </div>
 
 <!-- Add course form -->
@@ -1416,10 +1440,136 @@
     return item;
   }
 
+  // ── Canvas sync ───────────────────────────────────────────────────────────
+  // All Canvas calls go through the Worker; the Canvas token never reaches the browser.
+  async function canvasApi(path, opts = {}) {
+    const r = await fetch(`${WORKER}${path}`, { ...opts, headers: authHeaders() });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 401) throw new Error('Add your write token (under Add Course → Optional) to use Canvas sync');
+    if (!r.ok && !d.summary) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+  }
+
+  function describeRun(run) {
+    if (!run) return 'Never synced.';
+    const when = new Date(run.finished_at || run.started_at).toLocaleString();
+    const s = run.summary || {};
+    const a = s.assignments || {};
+    return `Last sync ${esc(run.status)} · ${esc(when)} · ${a.seen ?? 0} assignments (${a.local_created ?? 0} new, ${a.local_updated ?? 0} updated)`;
+  }
+
+  function renderFindings(summary) {
+    const el = document.getElementById('canvasFindings');
+    if (!summary) { el.innerHTML = ''; return; }
+    const items = [];
+    (summary.errors || []).forEach(e => items.push(`⚠ ${esc(e.canvas_course_id ? `Course ${e.canvas_course_id}: ` : '')}${esc(e.message)}`));
+    (summary.possible_duplicates || []).forEach(d =>
+      items.push(`Possible duplicate: “${esc(d.name)}” (Canvas ${esc(d.canvas_id)}) ↔ ${d.local_candidates.map(esc).join(', ')}`));
+    (summary.undated || []).filter(u => !u.local_assignment_id).forEach(u =>
+      items.push(`No due date in Canvas (not added): “${esc(u.name)}”`));
+    el.innerHTML = items.length ? `<ul class="canvas-findings">${items.map(i => `<li>${i}</li>`).join('')}</ul>` : '';
+  }
+
+  async function loadCanvas() {
+    const statusEl = document.getElementById('canvasStatus');
+    const btn = document.getElementById('canvasSyncBtn');
+    const list = document.getElementById('canvasCourses');
+    let status;
+    try { status = await canvasApi('/api/canvas/status'); }
+    catch (e) { statusEl.textContent = e.message; btn.disabled = true; list.innerHTML = ''; return; }
+
+    if (!status.configured) {
+      statusEl.textContent = status.config_error || 'Canvas is not configured.';
+      btn.disabled = true; list.innerHTML = ''; return;
+    }
+    btn.disabled = status.running;
+    statusEl.innerHTML = `<span class="chip chip-canvas">${esc(status.host)}</span> ${describeRun(status.last_run)}`;
+    renderFindings(status.last_run && status.last_run.summary);
+
+    const [{ courses }, localResp] = await Promise.all([
+      canvasApi('/api/canvas/courses'),
+      fetch(`${WORKER}/api/courses`).then(r => r.json()).catch(() => ({ courses: [] })),
+    ]);
+    const locals = localResp.courses || [];
+    const linkedTo = new Set(courses.map(c => c.local_course_id).filter(Boolean));
+
+    if (!courses.length) {
+      list.innerHTML = '<div class="empty-row">No Canvas courses yet — run a sync.</div>';
+      return;
+    }
+    list.innerHTML = courses.map(c => {
+      const opts = locals
+        .filter(l => l.id === c.local_course_id || !linkedTo.has(l.id))
+        .map(l => `<option value="${esc(l.id)}"${l.id === c.local_course_id ? ' selected' : ''}>${esc(l.name)} (${esc(l.id)})</option>`)
+        .join('');
+      const okrOpts = Object.keys(okrMap).map(id => `<option value="${esc(id)}">${esc(id)}</option>`).join('');
+      return `<div class="canvas-course" data-canvas-id="${esc(c.canvas_id)}">
+        <div class="course-row">
+          <div>
+            <div class="course-name"><a href="${esc(c.html_url)}" target="_blank" rel="noopener">${esc(c.name || c.canvas_id)} ↗</a></div>
+            <div class="course-meta">
+              ${c.term_name ? `<span class="chip chip-term">${esc(c.term_name)}</span>` : ''}
+              ${c.course_code ? `<span class="chip chip-credits">${esc(c.course_code)}</span>` : ''}
+              ${c.removed_at ? '<span class="chip chip-credits">no longer active in Canvas</span>' : ''}
+              ${c.local_course_id ? `<span class="chip chip-okr">${c.sync_enabled ? 'syncing' : 'linked, paused'}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="canvas-course-row">
+          <select class="cv-local" aria-label="Local course">
+            <option value="">— not linked —</option>
+            ${opts}
+            <option value="__create__">+ Create a new course from Canvas</option>
+          </select>
+          <select class="cv-okr" aria-label="OKR for new course" hidden>${okrOpts}</select>
+          <label style="display:flex;gap:4px;align-items:center;text-transform:none;letter-spacing:0">
+            <input type="checkbox" class="cv-enabled" ${c.sync_enabled || !c.local_course_id ? 'checked' : ''}> sync assignments
+          </label>
+          <button type="button" class="btn-sm accent cv-save">Save</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    list.querySelectorAll('.canvas-course').forEach(row => {
+      const sel = row.querySelector('.cv-local');
+      const okrSel = row.querySelector('.cv-okr');
+      sel.addEventListener('change', () => { okrSel.hidden = sel.value !== '__create__'; });
+      row.querySelector('.cv-save').addEventListener('click', async () => {
+        const id = row.dataset.canvasId;
+        const enabled = row.querySelector('.cv-enabled').checked;
+        try {
+          if (!sel.value) {
+            await canvasApi(`/api/canvas/courses/${encodeURIComponent(id)}/unlink`, { method: 'POST' });
+          } else {
+            const body = sel.value === '__create__'
+              ? { create: true, okr_id: okrSel.value, sync_enabled: enabled }
+              : { local_course_id: sel.value, sync_enabled: enabled };
+            await canvasApi(`/api/canvas/courses/${encodeURIComponent(id)}/link`, { method: 'POST', body: JSON.stringify(body) });
+          }
+          showToast('canvasToast', 'Saved — run Sync now to pull assignments', 'success');
+          await loadCanvas();
+          await loadCourses();
+        } catch (e) { showToast('canvasToast', e.message, 'error'); }
+      });
+    });
+  }
+
+  document.getElementById('canvasSyncBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('canvasSyncBtn');
+    btn.disabled = true;
+    showToast('canvasToast', 'Syncing with Canvas…', 'info');
+    try {
+      const d = await canvasApi('/api/canvas/sync', { method: 'POST' });
+      showToast('canvasToast', `Sync ${d.status}`, d.status === 'succeeded' ? 'success' : 'error');
+    } catch (e) { showToast('canvasToast', e.message, 'error'); }
+    await loadCanvas();
+  });
+
   // ── Init ──────────────────────────────────────────────────────────────────
   (async () => {
     await loadOKRs();
     await loadCourses();
+    await loadCanvas();
   })();
 </script>
 </body>

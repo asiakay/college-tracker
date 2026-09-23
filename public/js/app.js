@@ -190,6 +190,15 @@ function populateCourseFilter(items) {
     courses.map(c => `<option${c === current ? ' selected' : ''}>${esc(c)}</option>`).join('');
 }
 
+// Canvas-backed assignments link to Canvas; removed ones are flagged.
+function canvasBadge(a) {
+  if (a.source !== 'canvas') return '';
+  if (a.canvas_state === 'removed') return `<span class="chip chip-canvas" title="No longer listed in Canvas">Canvas: removed</span>`;
+  return a.canvas_url
+    ? `<a class="chip chip-canvas" href="${esc(a.canvas_url)}" target="_blank" rel="noopener" title="Open in Canvas">Canvas ↗</a>`
+    : `<span class="chip chip-canvas">Canvas</span>`;
+}
+
 function renderDeadlines() {
   const courseF = document.getElementById('dl-course-filter').value;
   const statusF = document.getElementById('dl-status-filter').value;
@@ -213,6 +222,7 @@ function renderDeadlines() {
     return `<tr class="${rowCls}" data-id="${esc(a.id)}">
       <td>
         ${esc(a.title)}
+        ${canvasBadge(a)}
         ${canBreakDown ? `<button class="btn-breakdown" data-asn="${esc(a.id)}" title="Generate study tasks">Break down →</button>` : ''}
       </td>
       <td><span class="chip chip-course">${esc(a.course_name)}</span></td>
@@ -325,7 +335,7 @@ function renderCourses() {
         ${myAsns.length ? myAsns.map(a => `
           <div class="course-asn-item">
             ${statusChip(a.status)}
-            <span class="course-asn-title">${esc(a.title)}</span>
+            <span class="course-asn-title">${esc(a.title)} ${canvasBadge(a)}</span>
             <span class="course-asn-due">${fmt(a.due_date)}</span>
           </div>`).join('') : `<div style="font-size:12px;color:var(--ink-low);padding:6px 0;">No assignments yet.</div>`}
       </div>
@@ -494,7 +504,7 @@ function renderProgress(rows, assignments = []) {
       ? myAsns.map(a => `
           <div class="course-asn-item">
             ${statusChip(a.status)}
-            <span class="course-asn-title">${esc(a.title)}</span>
+            <span class="course-asn-title">${esc(a.title)} ${canvasBadge(a)}</span>
             ${a.due_date ? `<span class="course-asn-due">${fmt(a.due_date)}</span>` : ''}
             ${a.weight_pct ? `<span class="course-asn-due">${a.weight_pct}%</span>` : ''}
           </div>`).join('')

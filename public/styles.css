@@ -263,6 +263,7 @@ body {
 .chip-sub     { background: var(--amber-dim);  color: var(--amber); }
 .chip-graded  { background: var(--green-dim);  color: var(--green); }
 .chip-type    { background: var(--surface2);   color: var(--ink-mid); font-weight: 500; }
+.chip-canvas  { background: rgba(228,112,70,0.12); color: rgb(236,140,100); text-decoration: none; margin-left: 4px; }
 
 /* ── Progress bar ─────────────────────────────────────────────────────────── */
 .progress-bar {

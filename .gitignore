@@ -4,3 +4,4 @@ package-lock.json
 dist/
 *.local
 .env
+.dev.vars

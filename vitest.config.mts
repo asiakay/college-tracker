@@ -13,7 +13,12 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: "./wrangler.toml" },
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations },
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            MCP_SECRET_TOKEN: "test-token",
+            CANVAS_BASE_URL: "https://school.instructure.com",
+            CANVAS_API_TOKEN: "canvas-test-token",
+          },
         },
       }),
     ],

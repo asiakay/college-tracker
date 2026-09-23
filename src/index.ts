@@ -11,6 +11,7 @@
  *   get_daily_summary      — all tasks logged on a given date across all repos
  */
 
+import { handleCanvasRoute } from "./canvas/routes";
 import type { Env } from "./env";
 export type { Env } from "./env";
 
@@ -320,6 +321,11 @@ export default {
 
     if (url.pathname === "/api/health" && request.method === "GET") {
       return new Response(JSON.stringify({ status: "ok", service: "college-tracker" }), { headers: CORS });
+    }
+
+    // ── Canvas LMS sync (all routes bearer-authenticated) ─────────────────────
+    if (url.pathname.startsWith("/api/canvas/")) {
+      return handleCanvasRoute(request, env, url);
     }
 
     // ── REST: read routes (open) ──────────────────────────────────────────────
@@ -859,6 +865,17 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       if (asnMatch && request.method === "PUT") {
         const asnId = asnMatch[1];
         const { status, due_date, blocker, grade = null, notes = null } = body as Record<string, unknown>;
+        if (due_date !== undefined) {
+          const linked = await env.DB.prepare(
+            "SELECT 1 FROM canvas_assignments WHERE local_assignment_id = ?"
+          ).bind(asnId).first();
+          if (linked) {
+            return new Response(
+              JSON.stringify({ error: "due_date is managed by Canvas for this assignment" }),
+              { status: 409, headers: CORS }
+            );
+          }
+        }
         const fields: string[] = [];
         const vals: unknown[] = [];
         if (status   !== undefined) { fields.push("status = ?");   vals.push(status); }

@@ -15,6 +15,7 @@
     </div>
     <nav class="tab-nav" role="tablist">
       <button class="tab-btn active" data-tab="today"    role="tab" aria-selected="true">Today</button>
+      <button class="tab-btn"        data-tab="tasks"     role="tab" aria-selected="false">Tasks</button>
       <button class="tab-btn"        data-tab="deadlines" role="tab" aria-selected="false">Deadlines</button>
       <button class="tab-btn"        data-tab="courses"   role="tab" aria-selected="false">Courses</button>
       <button class="tab-btn"        data-tab="progress"  role="tab" aria-selected="false">OKR Progress</button>
@@ -33,6 +34,32 @@
         <div>
           <div class="today-col-title">Logged today</div>
           <div id="today-tasks"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MICRO-TASK BOARD -->
+    <section id="view-tasks" class="view">
+      <h2 class="view-title">Micro-tasks</h2>
+      <p class="view-sub">Drag a card to set your order. Drag it to another column to move it along.</p>
+      <div class="filters">
+        <select class="filter-select" id="mt-course-filter" aria-label="Filter by course"><option value="">All courses</option></select>
+        <select class="filter-select" id="mt-asn-filter" aria-label="Filter by assignment"><option value="">All assignments</option></select>
+      </div>
+      <div class="mt-movement" id="mt-movement"></div>
+      <div class="mt-progress" id="mt-progress"></div>
+      <div class="mt-board">
+        <div class="mt-col" data-status="To Do">
+          <div class="mt-col-head">To Do <span class="mt-count"></span></div>
+          <div class="mt-list"></div>
+        </div>
+        <div class="mt-col" data-status="In Progress">
+          <div class="mt-col-head">In Progress <span class="mt-count"></span></div>
+          <div class="mt-list"></div>
+        </div>
+        <div class="mt-col" data-status="Done">
+          <div class="mt-col-head">Done <span class="mt-hint">last 14 days</span> <span class="mt-count"></span></div>
+          <div class="mt-list"></div>
         </div>
       </div>
     </section>
@@ -212,6 +239,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
   <script src="js/app.js" type="module"></script>
 </body>
 </html>

@@ -864,7 +864,7 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       const asnMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)$/);
       if (asnMatch && request.method === "PUT") {
         const asnId = asnMatch[1];
-        const { status, due_date, blocker, grade = null, notes = null } = body as Record<string, unknown>;
+        const { status, due_date, blocker, grade, notes } = body as Record<string, unknown>;
         if (due_date !== undefined) {
           const linked = await env.DB.prepare(
             "SELECT 1 FROM canvas_assignments WHERE local_assignment_id = ?"

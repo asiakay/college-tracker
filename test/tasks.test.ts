@@ -21,3 +21,15 @@ describe("POST /api/tasks", () => {
     expect(await asnStatus("SCI-133-F26-A1")).toBe("In Progress");
   });
 });
+
+describe("PUT /api/assignments/:id", () => {
+  it("leaves fields that were not sent untouched", async () => {
+    await env.DB.prepare(
+      `INSERT INTO assignments (id, course_id, okr_id, title, due_date, grade, notes) VALUES ('SCI-133-F26-A2','SCI-133-F26','KR-ACAD-1','Essay','2026-10-01',88,'keep me')`
+    ).run();
+    const res = await call("/api/assignments/SCI-133-F26-A2", { method: "PUT", json: { status: "In Progress" } });
+    expect(res.status).toBe(200);
+    expect(await env.DB.prepare("SELECT status, grade, notes FROM assignments WHERE id = 'SCI-133-F26-A2'").first())
+      .toEqual({ status: "In Progress", grade: 88, notes: "keep me" });
+  });
+});

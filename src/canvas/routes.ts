@@ -275,17 +275,29 @@ export async function handleCanvasRoute(request: Request, env: Env, url: URL): P
     }
     const htmlUrl = canvasHtmlUrl(item.html_url, loaded.cfg.origin);
     if (!htmlUrl) return json({ error: "That module item has no Canvas page to open" }, 422);
+    // Canvas serves the file itself (to a logged-in student) from its download URL.
+    const fileId = item.type === "File" && typeof item.content_id === "string" && CANVAS_ID.test(item.content_id) ? item.content_id : null;
+    const downloadUrl = fileId
+      ? `${loaded.cfg.origin}/courses/${encodeURIComponent(courseId as string)}/files/${encodeURIComponent(fileId)}/download?download_frd=1`
+      : null;
     const row = {
       assignment_id: assignmentId, canvas_course_id: courseId, module_id: moduleId, item_id: itemId,
-      title: item.title ?? `Item ${itemId}`, item_type: item.type ?? null, html_url: htmlUrl,
+      title: item.title ?? `Item ${itemId}`, item_type: item.type ?? null, html_url: htmlUrl, download_url: downloadUrl,
     };
-    await env.DB.prepare(
-      `INSERT INTO canvas_materials (assignment_id, canvas_host, canvas_course_id, module_id, item_id, title, item_type, html_url, linked_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (assignment_id) DO UPDATE SET canvas_host = excluded.canvas_host, canvas_course_id = excluded.canvas_course_id,
-         module_id = excluded.module_id, item_id = excluded.item_id, title = excluded.title,
-         item_type = excluded.item_type, html_url = excluded.html_url, linked_at = excluded.linked_at`,
-    ).bind(assignmentId, host, courseId, moduleId, itemId, row.title, row.item_type, htmlUrl, new Date().toISOString()).run();
+    try {
+      await env.DB.prepare(
+        `INSERT INTO canvas_materials (assignment_id, canvas_host, canvas_course_id, module_id, item_id, title, item_type, html_url, download_url, linked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (assignment_id) DO UPDATE SET canvas_host = excluded.canvas_host, canvas_course_id = excluded.canvas_course_id,
+           module_id = excluded.module_id, item_id = excluded.item_id, title = excluded.title, item_type = excluded.item_type,
+           html_url = excluded.html_url, download_url = excluded.download_url, linked_at = excluded.linked_at`,
+      ).bind(assignmentId, host, courseId, moduleId, itemId, row.title, row.item_type, htmlUrl, downloadUrl, new Date().toISOString()).run();
+    } catch (e) {
+      if (e instanceof Error && /no such table: canvas_materials|no column named download_url/.test(e.message)) {
+        return json({ error: "Linking files needs migrations 0011 and 0012 — run Apply D1 Migration for each" }, 503);
+      }
+      throw e;
+    }
     return json(row);
   }
 

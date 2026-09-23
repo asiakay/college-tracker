@@ -60,6 +60,8 @@ export interface CanvasModuleItemJson {
   title?: string | null;
   type?: string | null; // File | Page | Assignment | Quiz | ExternalUrl | SubHeader | ...
   html_url?: string | null;
+  /** For File items, the Canvas file id. */
+  content_id?: string | null;
   published?: boolean | null;
 }
 

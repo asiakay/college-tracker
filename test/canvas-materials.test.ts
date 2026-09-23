@@ -5,7 +5,7 @@ import { call } from "./helpers";
 const ORIGIN = "https://school.instructure.com";
 
 const LECTURE_ITEM = {
-  id: "9001", module_id: "71", title: "SCI151Lecture#1&HW#1.docx", type: "File",
+  id: "9001", module_id: "71", title: "SCI151Lecture#1&HW#1.docx", type: "File", content_id: "555",
   html_url: `${ORIGIN}/courses/101/modules/items/9001`,
 };
 
@@ -68,13 +68,19 @@ describe("Canvas module materials", () => {
   it("links a module file to an assignment and shows it on the board", async () => {
     const res = await call("/api/canvas/materials", { method: "POST", json: LINK });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ title: LECTURE_ITEM.title, html_url: LECTURE_ITEM.html_url, item_type: "File" });
+    expect(await res.json()).toMatchObject({
+      title: LECTURE_ITEM.title, html_url: LECTURE_ITEM.html_url, item_type: "File",
+      download_url: `${ORIGIN}/courses/101/files/555/download?download_frd=1`,
+    });
 
     await env.DB.prepare(
       `INSERT INTO tasks (description, okr_id, assignment_id, status, date) VALUES ('Read lecture notes','KR-ACAD-1','SCI-133-F26-A1','To Do',DATE('now'))`,
     ).run();
     const board = await (await call("/api/microtasks")).json() as { tasks: Array<Record<string, unknown>> };
-    expect(board.tasks[0]).toMatchObject({ canvas_material_url: LECTURE_ITEM.html_url, canvas_material_title: LECTURE_ITEM.title });
+    expect(board.tasks[0]).toMatchObject({
+      canvas_material_url: LECTURE_ITEM.html_url, canvas_material_title: LECTURE_ITEM.title,
+      canvas_material_download_url: `${ORIGIN}/courses/101/files/555/download?download_frd=1`,
+    });
 
     // Relinking replaces; unlinking removes. Neither touches the assignment itself.
     expect((await call("/api/canvas/materials", { method: "POST", json: LINK })).status).toBe(200);
@@ -107,10 +113,21 @@ describe("Canvas module materials", () => {
     expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM canvas_materials`).first()).toEqual({ n: 0 });
   });
 
-  it("keeps the board working before migration 0011 is applied", async () => {
+  it("keeps the board working, and explains linking, before migrations 0011/0012 are applied", async () => {
     await env.DB.prepare(`DROP TABLE canvas_materials`).run();
-    const res = await call("/api/microtasks");
-    expect(res.status).toBe(200);
+    expect((await call("/api/microtasks")).status).toBe(200);
+    const res = await call("/api/canvas/materials", { method: "POST", json: LINK });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("0011 and 0012") });
+  });
+
+  it("has no download link for non-file items", async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(
+      { id: "9003", title: "Week 1 overview", type: "Page", html_url: `${ORIGIN}/courses/101/modules/items/9003` },
+    ), { headers: { "Content-Type": "application/json" } }));
+    const res = await call("/api/canvas/materials", { method: "POST", json: { ...LINK, item_id: "9003" } });
+    expect(await res.json()).toMatchObject({ item_type: "Page", download_url: null });
   });
 
   it("requires auth", async () => {

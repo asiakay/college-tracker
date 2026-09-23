@@ -252,7 +252,9 @@ function pickCanvasLinks(t) {
     return `<a class="mt-open-canvas" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`;
   }
   if (!t.canvas_course_url) return '';
-  return `<a class="mt-open-canvas secondary" href="${esc(t.canvas_course_url)}" target="_blank" rel="noopener">Canvas course ↗</a>
+  // Many courses post work as files in Modules rather than as Canvas assignments.
+  const modules = `${String(t.canvas_course_url).replace(/\/+$/, '')}/modules`;
+  return `<a class="mt-open-canvas secondary" href="${esc(modules)}" target="_blank" rel="noopener">Course modules ↗</a>
     <button type="button" class="mt-link-btn" data-asn="${esc(t.assignment_id)}" data-ccid="${esc(t.canvas_course_id)}"
       title="This assignment isn't linked to its Canvas assignment yet">Link to Canvas assignment…</button>
     <span class="mt-link-slot"></span>`;

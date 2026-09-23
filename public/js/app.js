@@ -107,6 +107,12 @@ function switchTab(name) {
   VIEWS[name].load();
 }
 
+/** 150 → "2h 30m", 45 → "45m". */
+function fmtMinutes(mins) {
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
 // ── MICRO-TASK BOARD ───────────────────────────────────────────────────────
 // All micro-tasks load at once and filters apply locally, so a drag in a
 // filtered view can be merged back into the full column order.
@@ -115,8 +121,11 @@ let mtTasks = [];
 let mtProgress = null;
 let mtSortables = [];
 let mtSaving = false;
+let mtPicks = []; // Claude's suggestions, highlighted until the next load or drag
 
 async function loadTasks() {
+  mtPicks = [];
+  renderSuggestions();
   const data = await get('/api/microtasks').catch(() => null);
   if (!data) {
     document.getElementById('mt-progress').innerHTML = `<div class="empty">Couldn't load micro-tasks.</div>`;
@@ -163,9 +172,10 @@ function ago(iso) {
 function renderTaskCard(t) {
   const cd = t.due_date ? countdown(t.due_date) : null;
   const options = MT_STATUSES.map(s => `<option${s === t.status ? ' selected' : ''}>${s}</option>`).join('');
-  return `<div class="mt-card${t.status === 'Done' ? ' mt-done' : ''}" data-id="${t.id}">
+  const rank = mtPicks.findIndex(p => p.task_id === t.id);
+  return `<div class="mt-card${t.status === 'Done' ? ' mt-done' : ''}${rank >= 0 ? ` mt-pick mt-pick-${rank + 1}` : ''}" data-id="${t.id}">
     <div class="mt-card-top">
-      <span class="mt-desc">${esc(t.description)}</span>
+      <span class="mt-desc">${rank >= 0 ? `<span class="mt-pick-badge">#${rank + 1}</span> ` : ''}${esc(t.description)}</span>
       <select class="mt-move" aria-label="Move task">${options}</select>
     </div>
     <div class="mt-meta">
@@ -190,6 +200,7 @@ function renderTaskProgress() {
       <div class="mt-stats">
         <div><span class="mt-stat">${move.moved_today}</span> moved today</div>
         <div><span class="mt-stat">${move.done_this_week}</span> done this week</div>
+        ${move.remaining_due_this_week_min ? `<div><span class="mt-stat">~${fmtMinutes(move.remaining_due_this_week_min)}</span> of work due this week</div>` : ''}
       </div>
       <div class="mt-spark" role="img" aria-label="Micro-tasks completed per day, last 14 days">
         ${move.done_by_day.map(d => `<div class="mt-bar" title="${esc(d.date)}: ${d.done} done"><div style="height:${Math.round((d.done / max) * 100)}%"></div></div>`).join('')}
@@ -205,7 +216,7 @@ function renderTaskProgress() {
     return `<div class="mt-prog-row">
       <div class="mt-prog-head">
         <span class="mt-prog-title">${esc(a.title)}${a.canvas_url ? ` <a class="chip chip-canvas" href="${esc(a.canvas_url)}" target="_blank" rel="noopener">Canvas ↗</a>` : ''}</span>
-        <span class="mt-prog-count">${a.done}/${a.total} done${cd ? ` · <span class="mt-due ${cd.cls}">${cd.label}</span>` : ''}</span>
+        <span class="mt-prog-count">${a.est_remaining_min ? `~${fmtMinutes(a.est_remaining_min)} left · ` : ''}${a.done}/${a.total} done${cd ? ` · <span class="mt-due ${cd.cls}">${cd.label}</span>` : ''}</span>
       </div>
       <div class="mt-prog-bar"><div class="mt-prog-done" style="width:${donePct}%"></div><div class="mt-prog-doing" style="width:${progPct}%"></div></div>
     </div>`;
@@ -229,6 +240,38 @@ function renderTasks() {
     });
   });
   initTaskSortables();
+}
+
+function renderSuggestions() {
+  const el = document.getElementById('mt-suggest');
+  if (!el) return;
+  if (!mtPicks.length) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = `<div class="mt-suggest-head">Claude suggests</div><ol>${mtPicks.map(p => {
+    const t = mtTasks.find(x => x.id === p.task_id);
+    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div></li>`;
+  }).join('')}</ol>`;
+}
+
+async function suggestNextTask() {
+  const btn = document.getElementById('mt-suggest-btn');
+  btn.disabled = true;
+  btn.textContent = 'Thinking…';
+  try {
+    const res = await api('/api/microtasks/suggest', { method: 'POST', body: '{}' });
+    if (res.error) throw new Error(res.error);
+    mtPicks = res.picks || [];
+    if (!mtPicks.length) toast('Nothing open to suggest — add tasks with “Break down →”');
+    renderTasks();
+    renderSuggestions();
+    const first = document.querySelector('#view-tasks .mt-pick-1');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (e) {
+    if (e.message !== 'Unauthorized') toast(`Couldn't get a suggestion: ${e.message}`, 'fail');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ What should I do next?';
+  }
 }
 
 function initTaskSortables() {
@@ -426,7 +469,7 @@ function renderDeadlines() {
 
   const tbody = document.getElementById('deadlines-body');
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No assignments match the current filters.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">No assignments match the current filters.</div></td></tr>`;
     return;
   }
 
@@ -445,6 +488,7 @@ function renderDeadlines() {
       <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
       <td class="mono">${a.weight_pct ? a.weight_pct + '%' : '—'}</td>
       <td class="mono asn-due ${cd.cls}" title="${esc(a.due_date)}">${fmt(a.due_date)} · ${cd.label}</td>
+      <td class="mono">${a.est_remaining_min ? '~' + fmtMinutes(a.est_remaining_min) : '—'}</td>
       <td>
         <div class="status-wrap" id="${id}">
           <span class="status-chip chip ${STATUS_CHIP[a.status] || 'chip-not'}">${esc(a.status)}</span>
@@ -1130,6 +1174,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Micro-task board filters
   document.getElementById('mt-course-filter').addEventListener('change', () => { populateTaskFilters(); renderTasks(); });
   document.getElementById('mt-asn-filter').addEventListener('change', renderTasks);
+  document.getElementById('mt-suggest-btn').addEventListener('click', suggestNextTask);
 
   // History datepicker
   document.getElementById('history-date').addEventListener('change', loadHistory);

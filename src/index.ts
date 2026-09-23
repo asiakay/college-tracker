@@ -17,7 +17,8 @@
 import { isWriteAuthorized, requiresLogin } from "./auth";
 import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
-import { listMicrotasks, promoteAssignmentStmt, recordTaskCreated, saveColumn } from "./microtasks";
+import { listMicrotasks, promoteAssignmentStmt, recordTaskCreated, remainingMinutesByAssignment, saveColumn } from "./microtasks";
+import { suggestNext } from "./suggest";
 export type { Env } from "./env";
 
 const CORS = {
@@ -394,7 +395,9 @@ export default {
            AND a.status NOT IN ('Submitted', 'Graded')
          ORDER BY a.due_date ASC`
       ).bind(days).all();
-      return new Response(JSON.stringify({ deadlines: results, days_ahead: days }), { headers: CORS });
+      const remaining = await remainingMinutesByAssignment(env.DB);
+      const deadlines = results.map((r) => ({ ...r, est_remaining_min: remaining.get(r["id"] as string) ?? null }));
+      return new Response(JSON.stringify({ deadlines, days_ahead: days }), { headers: CORS });
     }
 
     if (url.pathname === "/api/progress" && request.method === "GET") {
@@ -807,6 +810,18 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
     if (url.pathname === "/api/microtasks" && request.method === "GET") {
       return new Response(JSON.stringify(await listMicrotasks(env, url)), { headers: CORS });
     }
+    // Claude's "what should I do next?" pick — spends API credit, so write auth.
+    if (url.pathname === "/api/microtasks/suggest" && request.method === "POST") {
+      if (!(await isWriteAuthorized(request, env))) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      }
+      const result = await suggestNext(env);
+      if ("error" in result) {
+        return new Response(JSON.stringify({ error: result.error }), { status: result.status, headers: CORS });
+      }
+      return new Response(JSON.stringify(result), { headers: CORS });
+    }
+
     // Same auth as "Break down →": open when no token, else bearer or Cloudflare Access.
     if (url.pathname === "/api/microtasks/column" && request.method === "PUT") {
       if (!(await isWriteAuthorized(request, env))) {

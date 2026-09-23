@@ -1004,3 +1004,25 @@ a:hover { text-decoration: underline; }
 .mt-foot { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; font-size: 11px; color: var(--ink-low); }
 .mt-due.urgent { color: var(--red); font-weight: 600; }
 .mt-due.soon { color: var(--amber); font-weight: 600; }
+
+/* ── "What should I do next?" ─────────────────────────────────────────────── */
+.mt-suggest-row { margin-bottom: 12px; }
+.mt-suggest-btn {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; cursor: pointer;
+}
+.mt-suggest-btn:disabled { opacity: 0.6; cursor: progress; }
+.mt-suggest {
+  background: var(--surface); border: 1px solid var(--accent); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 16px; font-size: 13px;
+}
+.mt-suggest-head { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.mt-suggest ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.mt-suggest-reason { color: var(--ink-mid); font-size: 12.5px; }
+.mt-card.mt-pick { border-color: var(--accent); }
+.mt-card.mt-pick-1 { box-shadow: 0 0 0 2px var(--accent); }
+.mt-pick-badge {
+  display: inline-block; font-size: 10.5px; font-weight: 700; color: #fff; background: var(--accent);
+  border-radius: 8px; padding: 1px 6px; margin-right: 2px; vertical-align: 1px;
+}
+.mt-pick-2 .mt-pick-badge, .mt-pick-3 .mt-pick-badge { background: var(--accent-dim); color: var(--accent); }

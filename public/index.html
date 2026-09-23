@@ -46,6 +46,10 @@
         <select class="filter-select" id="mt-course-filter" aria-label="Filter by course"><option value="">All courses</option></select>
         <select class="filter-select" id="mt-asn-filter" aria-label="Filter by assignment"><option value="">All assignments</option></select>
       </div>
+      <div class="mt-suggest-row">
+        <button type="button" class="mt-suggest-btn" id="mt-suggest-btn">✨ What should I do next?</button>
+      </div>
+      <div class="mt-suggest" id="mt-suggest" hidden></div>
       <div class="mt-movement" id="mt-movement"></div>
       <div class="mt-progress" id="mt-progress"></div>
       <div class="mt-board">
@@ -94,10 +98,11 @@
               <th>Type</th>
               <th>Weight</th>
               <th>Due</th>
+              <th>Time left</th>
               <th>Status</th>
             </tr>
           </thead>
-          <tbody id="deadlines-body"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          <tbody id="deadlines-body"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
         </table>
       </div>
     </section>

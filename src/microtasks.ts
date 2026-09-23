@@ -18,6 +18,38 @@ const DONE_WINDOW_DAYS = 14;
 /** D1 allows at most 100 bound parameters per statement. */
 const CHUNK = 90;
 
+/**
+ * Minutes in a time estimate such as "30m", "1h", "1.5h", "1h 30m", "90 min",
+ * "2 hrs" or "45". Returns null when nothing in the string is a duration.
+ */
+export function parseDuration(text: string): number | null {
+  const s = text.trim().toLowerCase();
+  if (!s) return null;
+  let total = 0;
+  let matched = false;
+  const re = /(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)?(?![a-z])/g;
+  for (const m of s.matchAll(re)) {
+    const n = Number(m[1]);
+    const unit = m[2] ?? "m";
+    total += unit.startsWith("h") ? n * 60 : n;
+    matched = true;
+  }
+  return matched ? Math.round(total) : null;
+}
+
+/** Remaining (not Done) estimated minutes per assignment. */
+export async function remainingMinutesByAssignment(db: D1Database): Promise<Map<string, number>> {
+  const { results } = await db.prepare(
+    `SELECT assignment_id, time_spent FROM tasks WHERE assignment_id IS NOT NULL AND status != 'Done'`,
+  ).all<{ assignment_id: string; time_spent: string | null }>();
+  const out = new Map<string, number>();
+  for (const r of results) {
+    const mins = r.time_spent ? parseDuration(r.time_spent) : null;
+    out.set(r.assignment_id, (out.get(r.assignment_id) ?? 0) + (mins ?? 0));
+  }
+  return out;
+}
+
 /** Working on an assignment means it has started — never that it was submitted. */
 export function promoteAssignmentStmt(db: D1Database, assignmentId: string): D1PreparedStatement {
   return db.prepare(`UPDATE assignments SET status = 'In Progress' WHERE id = ? AND status = 'Not Started'`)
@@ -108,11 +140,38 @@ export async function listMicrotasks(env: Env, url: URL) {
   }
   const doneThisWeek = days.slice(-7).reduce((n, d) => n + d.done, 0);
 
+  // Time estimates from each task's time_spent (e.g. "30m", "1h").
+  const { results: timeRows } = await env.DB.prepare(
+    `SELECT t.assignment_id, t.status, t.time_spent FROM tasks t
+     LEFT JOIN assignments a ON a.id = t.assignment_id
+     WHERE t.assignment_id IS NOT NULL${f.sql}`,
+  ).bind(...f.binds).all<{ assignment_id: string; status: string; time_spent: string | null }>();
+  const est = new Map<string, { total: number; remaining: number; unparsed: number }>();
+  for (const r of timeRows) {
+    const e = est.get(r.assignment_id) ?? { total: 0, remaining: 0, unparsed: 0 };
+    const mins = r.time_spent ? parseDuration(r.time_spent) : null;
+    if (mins === null) e.unparsed++;
+    e.total += mins ?? 0;
+    if (r.status !== "Done") e.remaining += mins ?? 0;
+    est.set(r.assignment_id, e);
+  }
+  const weekEnd = localDate(new Date(Date.now() + 7 * 86_400_000).toISOString(), tz)!;
+  let dueThisWeekMin = 0;
+  const assignmentsWithEstimates = assignments.map((a) => {
+    const e = est.get(a["id"] as string) ?? { total: 0, remaining: 0, unparsed: 0 };
+    const due = a["due_date"] as string | null;
+    if (due && due <= weekEnd) dueThisWeekMin += e.remaining;
+    return { ...a, est_total_min: e.total, est_remaining_min: e.remaining, est_unparsed: e.unparsed };
+  });
+
   return {
     tasks,
     progress: {
-      assignments,
-      movement: { timezone: tz, moved_today: movedToday, done_this_week: doneThisWeek, done_by_day: days },
+      assignments: assignmentsWithEstimates,
+      movement: {
+        timezone: tz, moved_today: movedToday, done_this_week: doneThisWeek, done_by_day: days,
+        remaining_due_this_week_min: dueThisWeekMin,
+      },
     },
   };
 }

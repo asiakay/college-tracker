@@ -44,6 +44,30 @@ describe("/api/canvas auth", () => {
   });
 });
 
+describe("/api/canvas auth follows the app's write rule", () => {
+  const ACCESS = { "Cf-Access-Authenticated-User-Email": "me@example.edu", "Cf-Access-Jwt-Assertion": "jwt" };
+
+  it("is open without a token when MCP_SECRET_TOKEN is unset, like other routes", async () => {
+    const open = { MCP_SECRET_TOKEN: undefined };
+    expect((await call("/api/canvas/status", { token: null, env: open })).status).toBe(200);
+    const res = await call("/api/canvas/sync", { method: "POST", token: null, env: open });
+    expect(await res.json()).toMatchObject({ status: "succeeded" });
+  });
+
+  it("accepts a Cloudflare Access identity instead of a token", async () => {
+    expect((await call("/api/canvas/status", { token: null, headers: ACCESS })).status).toBe(200);
+  });
+
+  it("runs MCP canvas tools when /mcp is open", async () => {
+    const res = await call("/mcp", {
+      method: "POST", token: null, env: { MCP_SECRET_TOKEN: undefined },
+      json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "canvas_sync_status", arguments: {} } },
+    });
+    const body = await res.json() as any;
+    expect(JSON.parse(body.result.content[0].text)).toMatchObject({ configured: true });
+  });
+});
+
 describe("/api/canvas/status", () => {
   it("reports configuration without exposing the Canvas token", async () => {
     const res = await call("/api/canvas/status");

@@ -1445,7 +1445,7 @@
   async function canvasApi(path, opts = {}) {
     const r = await fetch(`${WORKER}${path}`, { ...opts, headers: authHeaders() });
     const d = await r.json().catch(() => ({}));
-    if (r.status === 401) throw new Error('Add your write token (under Add Course → Optional) to use Canvas sync');
+    if (r.status === 401) throw new Error('Not authorized — sign in through Cloudflare Access, or enter your write token under Add Course → Optional, then reload');
     if (!r.ok && !d.summary) throw new Error(d.error || `HTTP ${r.status}`);
     return d;
   }

@@ -45,7 +45,9 @@ read-only and never overwrites that personal state.
    `npx wrangler secret put CANVAS_BASE_URL`. Optionally set `CANVAS_TIMEZONE`
    (IANA name); otherwise your Canvas profile time zone is used to turn Canvas
    due timestamps into local due dates.
-5. `MCP_SECRET_TOKEN` must be set: every Canvas route and MCP tool requires it.
+5. Canvas routes use the same auth as the rest of the app: open when
+   `MCP_SECRET_TOKEN` is unset; otherwise a matching bearer token or a
+   Cloudflare Access login. Either way the Canvas token is never exposed.
 
 ### Using it
 
@@ -77,7 +79,7 @@ moves an assignment from Not Started to In Progress; it never marks it Submitted
 
 ### API
 
-All routes require `Authorization: Bearer $MCP_SECRET_TOKEN`.
+Same auth as the app's other writes (see Setup step 5).
 
 | Route | Purpose |
 |---|---|

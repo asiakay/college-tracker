@@ -13,6 +13,7 @@
  *   canvas_sync_status     — Canvas configuration + last sync run
  */
 
+import { isWriteAuthorized } from "./auth";
 import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
 export type { Env } from "./env";
@@ -354,7 +355,7 @@ export default {
       return new Response(JSON.stringify({ status: "ok", service: "college-tracker" }), { headers: CORS });
     }
 
-    // ── Canvas LMS sync (all routes bearer-authenticated) ─────────────────────
+    // ── Canvas LMS sync (same auth rule as other writes) ──────────────────────
     if (url.pathname.startsWith("/api/canvas/")) {
       return handleCanvasRoute(request, env, url);
     }
@@ -754,13 +755,8 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
     // the user never types a token) or a Bearer token (API / MCP callers).
     const genTasksMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/generate-tasks$/);
     if (genTasksMatch && request.method === "POST") {
-      if (env.MCP_SECRET_TOKEN) {
-        const cfUser = request.headers.get("Cf-Access-Authenticated-User-Email");
-        const cfJwt  = request.headers.get("Cf-Access-Jwt-Assertion");
-        const auth   = request.headers.get("Authorization") ?? "";
-        if (!(cfUser && cfJwt) && auth !== `Bearer ${env.MCP_SECRET_TOKEN}`) {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
-        }
+      if (!isWriteAuthorized(request, env)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
       }
       const assignmentId = genTasksMatch[1];
       const asnRow = await env.DB.prepare(
@@ -965,11 +961,8 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       else if (name === "get_upcoming_deadlines") result = await handleGetUpcomingDeadlines(env, args);
       else if (name === "get_degree_progress")    result = await handleGetDegreeProgress(env, args);
       else if (name === "get_daily_summary")      result = await handleGetDailySummary(env, args);
-      else if (name === "canvas_sync" || name === "canvas_sync_status") {
-        // Canvas tools are never open, even when /mcp itself is.
-        if (!env.MCP_SECRET_TOKEN) return err(id, -32000, "Canvas tools require MCP_SECRET_TOKEN to be configured");
-        result = name === "canvas_sync" ? await runConfiguredSync(env, "mcp") : await getCanvasStatus(env);
-      }
+      else if (name === "canvas_sync")            result = await runConfiguredSync(env, "mcp");
+      else if (name === "canvas_sync_status")     result = await getCanvasStatus(env);
       else return err(id, -32601, `Tool not found: ${name}`);
 
       return ok(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });

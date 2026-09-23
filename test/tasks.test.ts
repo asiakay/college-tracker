@@ -33,3 +33,17 @@ describe("PUT /api/assignments/:id", () => {
       .toEqual({ status: "In Progress", grade: 88, notes: "keep me" });
   });
 });
+
+describe("POST /api/assignments/:id/generate-tasks auth", () => {
+  it("rejects callers with neither a token nor a Cloudflare Access identity", async () => {
+    const res = await call("/api/assignments/NOPE/generate-tasks", { method: "POST", token: null });
+    expect(res.status).toBe(401);
+  });
+  it("lets a Cloudflare Access user through without a token", async () => {
+    const res = await call("/api/assignments/NOPE/generate-tasks", {
+      method: "POST", token: null,
+      headers: { "Cf-Access-Authenticated-User-Email": "me@example.edu", "Cf-Access-Jwt-Assertion": "jwt" },
+    });
+    expect(res.status).toBe(404); // past auth; the assignment doesn't exist
+  });
+});

@@ -137,3 +137,35 @@ describe("PUT /api/assignments/:id", () => {
     expect(await res.json()).toMatchObject({ assignment: { blocker: "waiting on TA", notes: "ch 1-4", due_date: "2026-10-15" } });
   });
 });
+
+describe("read routes expose Canvas fields additively", () => {
+  it("marks Canvas-backed and manual assignments", async () => {
+    await env.DB.prepare(
+      `INSERT INTO assignments (id, course_id, okr_id, title, due_date) VALUES ('SCI-133-F26-A1','SCI-133-F26','KR-ACAD-1','Reading log','2026-10-10')`,
+    ).run();
+    await call("/api/canvas/sync", { method: "POST" });
+    await call("/api/canvas/courses/101/link", { method: "POST", json: { local_course_id: "SCI-133-F26" } });
+    await call("/api/canvas/sync", { method: "POST" });
+
+    const { assignments } = await (await call("/api/assignments?course_id=SCI-133-F26")).json() as { assignments: Array<Record<string, unknown>> };
+    const byId = Object.fromEntries(assignments.map((a) => [a["id"], a]));
+    expect(byId["SCI-133-F26-A1"]).toMatchObject({ source: "manual", canvas_url: null, canvas_state: null });
+    expect(byId["SCI-133-F26-C5002"]).toMatchObject({
+      source: "canvas", canvas_due_at: "2026-10-15T16:00:00Z", canvas_state: "active", status: "Not Started",
+    });
+  });
+});
+
+describe("MCP canvas tools", () => {
+  const rpc = (name: string) => call("/mcp", { method: "POST", json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: {} } } });
+
+  it("lists and runs the Canvas tools", async () => {
+    const list = await (await call("/mcp", { method: "POST", json: { jsonrpc: "2.0", id: 1, method: "tools/list" } })).json() as any;
+    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(expect.arrayContaining(["canvas_sync", "canvas_sync_status"]));
+
+    const run = await (await rpc("canvas_sync")).json() as any;
+    expect(JSON.parse(run.result.content[0].text)).toMatchObject({ status: "succeeded" });
+    const status = await (await rpc("canvas_sync_status")).json() as any;
+    expect(JSON.parse(status.result.content[0].text)).toMatchObject({ configured: true, last_run: { trigger: "mcp" } });
+  });
+});

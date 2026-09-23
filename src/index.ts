@@ -16,6 +16,7 @@
 import { isWriteAuthorized } from "./auth";
 import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
+import { listMicrotasks, promoteAssignmentStmt, recordTaskCreated, saveColumn } from "./microtasks";
 export type { Env } from "./env";
 
 const CORS = {
@@ -265,13 +266,12 @@ async function handleLogAcademicTask(env: Env, args: Record<string, unknown>) {
     `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status, notes)
      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *`
   ).bind(description, okr_id, assignment_id, source_repo, time_spent, status, notes).first();
+  await recordTaskCreated(env.DB, task?.["id"], status);
 
   // Finishing a micro-task means work has started — it never means the
   // assignment was submitted. Submission is an institutional fact (Canvas).
   if (status === "Done" && assignment_id) {
-    await env.DB.prepare(
-      `UPDATE assignments SET status = 'In Progress' WHERE id = ? AND status = 'Not Started'`
-    ).bind(assignment_id).run();
+    await promoteAssignmentStmt(env.DB, assignment_id).run();
   }
 
   return { task };
@@ -787,9 +787,28 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
           `INSERT INTO tasks (description, okr_id, assignment_id, source_repo, time_spent, status)
            VALUES (?, ?, ?, 'college-tracker', ?, 'To Do') RETURNING *`
         ).bind(t.description, asnRow.okr_id, assignmentId, t.time_spent).first();
-        if (row) tasks.push(row);
+        if (row) { tasks.push(row); await recordTaskCreated(env.DB, row["id"], "To Do"); }
       }
       return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
+    }
+
+    // ── Micro-task board ─────────────────────────────────────────────────────
+    if (url.pathname === "/api/microtasks" && request.method === "GET") {
+      return new Response(JSON.stringify(await listMicrotasks(env, url)), { headers: CORS });
+    }
+    // Same auth as "Break down →": open when no token, else bearer or Cloudflare Access.
+    if (url.pathname === "/api/microtasks/column" && request.method === "PUT") {
+      if (!isWriteAuthorized(request, env)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      }
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; }
+      catch { return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS }); }
+      const result = await saveColumn(env, body ?? {});
+      if ("error" in result) {
+        return new Response(JSON.stringify({ error: result.error }), { status: result.status, headers: CORS });
+      }
+      return new Response(JSON.stringify(result), { headers: CORS });
     }
 
     // ── REST: write routes (bearer-token protected) ───────────────────────────

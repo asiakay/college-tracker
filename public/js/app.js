@@ -183,6 +183,8 @@ function renderTaskCard(t) {
       ${t.assignment_title ? `<span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}
       ${t.canvas_url ? `<a class="chip chip-canvas" href="${esc(t.canvas_url)}" target="_blank" rel="noopener" title="Open in Canvas">Canvas ↗</a>` : ''}
     </div>
+    ${t.link_url ? `<a class="mt-task-link" href="${esc(t.link_url)}" target="_blank" rel="noopener" title="${esc(t.link_url)}">▶ ${esc(t.link_label || 'Open link')} ↗</a>` : ''}
+    ${t.notes && t.status !== 'Done' ? `<div class="mt-task-notes" title="${esc(t.notes)}">${esc(t.notes)}</div>` : ''}
     <div class="mt-foot">
       ${cd && t.status !== 'Done' ? `<span class="mt-due ${cd.cls}">${cd.label}</span>` : ''}
       ${t.time_spent ? `<span>⏱ ${esc(t.time_spent)}</span>` : ''}
@@ -254,6 +256,10 @@ function pickCanvasLinks(t) {
     if (t.canvas_material_download_url) {
       links.push(`<a class="mt-open-canvas secondary" href="${esc(t.canvas_material_download_url)}" target="_blank" rel="noopener" title="Download from Canvas (you must be logged in to Canvas)">⬇ Download</a>`);
     }
+    if (t.canvas_material_download_url && t.assignment_id) {
+      links.push(`<button type="button" class="mt-link-btn mt-breakdown-btn" data-asn="${esc(t.assignment_id)}" data-file="${esc(t.canvas_material_title || '')}"
+        title="Have Claude turn this file into concrete steps you can review">✨ Break down this file</button>`);
+    }
   }
   if (t.canvas_url) {
     links.push(`<a class="mt-open-canvas${t.canvas_material_url ? ' secondary' : ''}" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`);
@@ -279,7 +285,8 @@ function pickCanvasLinks(t) {
 
 function bindCanvasLinkers(root) {
   root.querySelectorAll('.mt-link-btn').forEach(btn => btn.addEventListener('click', () =>
-    (btn.dataset.kind === 'material' ? showMaterialLinker(btn) : showCanvasLinker(btn))));
+    (btn.classList.contains('mt-breakdown-btn') ? openBreakdown(btn.dataset.asn, btn.dataset.file)
+      : btn.dataset.kind === 'material' ? showMaterialLinker(btn) : showCanvasLinker(btn))));
 }
 
 /** Reload the board after a link change without losing Claude's picks. */
@@ -367,6 +374,111 @@ async function showCanvasLinker(btn) {
       if (e.message !== 'Unauthorized') toast(`Couldn't link: ${e.message}`, 'fail');
     }
   });
+}
+
+// ── Break down from the linked Canvas file ──────────────────────────────────
+let bdAssignment = null;
+let bdRun = 0;
+
+function parseDuration(text) {
+  const str = String(text || '').trim().toLowerCase();
+  let total = 0, matched = false;
+  for (const m of str.matchAll(/(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)?(?![a-z])/g)) {
+    total += (m[2] || 'm').startsWith('h') ? Number(m[1]) * 60 : Number(m[1]);
+    matched = true;
+  }
+  return matched ? Math.round(total) : null;
+}
+
+function closeBreakdown() {
+  bdRun++;
+  bdAssignment = null;
+  document.getElementById('bd-backdrop').setAttribute('hidden', '');
+}
+
+function updateBreakdownTotal() {
+  const rows = [...document.querySelectorAll('#bd-steps li')].filter(li => li.querySelector('.bd-keep').checked);
+  const mins = rows.reduce((n, li) => n + (parseDuration(li.querySelector('.bd-time').value) || 0), 0);
+  document.getElementById('bd-add').textContent = `Add ${rows.length} step${rows.length === 1 ? '' : 's'}`;
+  document.getElementById('bd-add').disabled = !rows.length;
+  document.getElementById('bd-total').textContent = mins ? `~${fmtMinutes(mins)} total` : '';
+}
+
+async function openBreakdown(assignmentId, fileTitle) {
+  const run = ++bdRun;
+  bdAssignment = assignmentId;
+  document.getElementById('bd-file').textContent = fileTitle || 'the linked file';
+  document.getElementById('bd-loading').hidden = false;
+  document.getElementById('bd-review').hidden = true;
+  document.getElementById('bd-backdrop').removeAttribute('hidden');
+  let res;
+  try {
+    res = await api(`/api/assignments/${encodeURIComponent(assignmentId)}/breakdown-preview`, { method: 'POST', body: '{}' });
+    if (res.error) throw new Error(res.error);
+  } catch (e) {
+    if (run !== bdRun) return;
+    closeBreakdown();
+    if (e.message !== 'Unauthorized') toast(`Couldn't break down the file: ${e.message}`, 'fail');
+    return;
+  }
+  if (run !== bdRun) return; // closed or reopened meanwhile
+
+  const src = document.getElementById('bd-source');
+  src.textContent = res.source.title;
+  src.href = res.source.html_url;
+  const warn = document.getElementById('bd-warnings');
+  warn.innerHTML = (res.warnings || []).map(w => `<li>⚠ ${esc(w)}</li>`).join('');
+  warn.hidden = !(res.warnings || []).length;
+  document.getElementById('bd-steps').innerHTML = res.steps.map((st, i) => `
+    <li data-i="${i}">
+      <input type="checkbox" class="bd-keep" checked aria-label="Keep step ${i + 1}">
+      <div class="bd-step">
+        <input class="bd-desc" value="${esc(st.description)}" maxlength="200" aria-label="Step ${i + 1}">
+        <div class="bd-meta">
+          <input class="bd-time" value="${esc(st.time_estimate || '')}" placeholder="time" size="7" aria-label="Time estimate">
+          ${st.link_url ? `<a class="mt-task-link" href="${esc(st.link_url)}" target="_blank" rel="noopener" title="${esc(st.link_url)}">▶ ${esc(st.link_label || 'Link')} ↗</a>` : ''}
+        </div>
+        ${st.detail ? `<div class="bd-detail">${esc(st.detail)}</div>` : ''}
+      </div>
+    </li>`).join('');
+  document.getElementById('bd-steps').dataset.steps = JSON.stringify(res.steps);
+  const n = res.replaceable_todo || 0;
+  document.getElementById('bd-replace-n').textContent = n;
+  document.getElementById('bd-replace').checked = n > 0;
+  document.getElementById('bd-replace-wrap').hidden = !n;
+  document.getElementById('bd-loading').hidden = true;
+  document.getElementById('bd-review').hidden = false;
+  updateBreakdownTotal();
+}
+
+async function addBreakdownSteps() {
+  const btn = document.getElementById('bd-add');
+  const original = JSON.parse(document.getElementById('bd-steps').dataset.steps || '[]');
+  const steps = [...document.querySelectorAll('#bd-steps li')]
+    .filter(li => li.querySelector('.bd-keep').checked)
+    .map(li => {
+      const st = original[Number(li.dataset.i)] || {};
+      return {
+        description: li.querySelector('.bd-desc').value.trim() || st.description,
+        time_spent: li.querySelector('.bd-time').value.trim() || null,
+        link_url: st.link_url || null,
+        link_label: st.link_label || null,
+        notes: st.detail || null,
+      };
+    });
+  if (!steps.length || !bdAssignment) return;
+  const replace = !document.getElementById('bd-replace-wrap').hidden && document.getElementById('bd-replace').checked;
+  btn.disabled = true;
+  try {
+    const res = await post(`/api/assignments/${encodeURIComponent(bdAssignment)}/tasks/bulk`, { steps, replace_todo: replace });
+    if (res.error) throw new Error(res.error);
+    closeBreakdown();
+    toast(`Added ${res.created} step${res.created === 1 ? '' : 's'}${res.removed ? `, removed ${res.removed} old` : ''} ✓`);
+    if (currentTab === 'tasks') await reloadKeepingPicks(); else if (currentTab === 'deadlines') loadDeadlines();
+  } catch (e) {
+    btn.disabled = false;
+    if (e.message !== 'Unauthorized') toast(`Couldn't add steps: ${e.message}`, 'fail');
+  }
 }
 
 async function suggestNextTask() {
@@ -598,7 +710,8 @@ function renderDeadlines() {
       <td>
         ${esc(a.title)}
         ${canvasBadge(a)}
-        ${canBreakDown ? `<button class="btn-breakdown" data-asn="${esc(a.id)}" title="Generate study tasks">Break down →</button>` : ''}
+        ${canBreakDown ? `<button class="btn-breakdown" data-asn="${esc(a.id)}"${a.has_canvas_material ? ' data-file="1"' : ''}
+          title="${a.has_canvas_material ? 'Break down the linked Canvas file into steps' : 'Generate study tasks'}">Break down →</button>` : ''}
       </td>
       <td><span class="chip chip-course">${esc(a.course_name)}</span></td>
       <td><span class="chip chip-type">${esc(a.deliverable_type)}</span></td>
@@ -649,6 +762,7 @@ function renderDeadlines() {
   // Break down → generate study tasks for an assignment
   tbody.querySelectorAll('.btn-breakdown').forEach(btn => {
     btn.addEventListener('click', async () => {
+      if (btn.dataset.file) { openBreakdown(btn.dataset.asn); return; }
       btn.textContent = 'Generating…';
       btn.disabled = true;
       try {
@@ -1281,6 +1395,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('syllabus-backdrop').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeSyllabusModal();
   });
+
+  // Break down from the linked Canvas file
+  document.getElementById('bd-close').addEventListener('click', closeBreakdown);
+  document.getElementById('bd-backdrop').addEventListener('click', e => { if (e.target === e.currentTarget) closeBreakdown(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('bd-backdrop').hidden) closeBreakdown();
+  });
+  document.getElementById('bd-steps').addEventListener('input', updateBreakdownTotal);
+  document.getElementById('bd-add').addEventListener('click', addBreakdownSteps);
 
   // Deadlines filters
   document.getElementById('dl-course-filter').addEventListener('change', renderDeadlines);

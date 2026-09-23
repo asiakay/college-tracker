@@ -67,6 +67,22 @@ export async function recordTaskCreated(db: D1Database, taskId: unknown, status:
   }
 }
 
+/** Rows of a table added by a later migration; none when it hasn't been applied yet. */
+async function optionalRows(db: D1Database, sql: string, table: string): Promise<Record<string, unknown>[]> {
+  try {
+    return (await db.prepare(sql).all<Record<string, unknown>>()).results;
+  } catch (e) {
+    if (e instanceof Error && e.message.includes(`no such table: ${table}`)) return [];
+    throw e;
+  }
+}
+
+/** Assignments with a linked Canvas module file. */
+export async function materialAssignmentIds(db: D1Database): Promise<Set<string>> {
+  const rows = await optionalRows(db, `SELECT assignment_id FROM canvas_materials`, "canvas_materials");
+  return new Set(rows.map((r) => r["assignment_id"] as string));
+}
+
 function filters(url: URL): { sql: string; binds: string[] } {
   const clauses: string[] = [];
   const binds: string[] = [];
@@ -104,19 +120,24 @@ export async function listMicrotasks(env: Env, url: URL) {
      ORDER BY x.position IS NULL, x.position, x.due_date IS NULL, x.due_date, x.created_at, x.id`,
   ).bind(...f.binds, since.toISOString().slice(0, 10)).all<Record<string, unknown>>();
 
-  // Linked Canvas materials, read separately so the board works before migrations 0011/0012.
+  // Linked Canvas materials and task links, read separately so the board works before
+  // migrations 0011–0013.
   const materials = new Map<string, Record<string, unknown>>();
-  try {
-    const { results } = await env.DB.prepare(`SELECT * FROM canvas_materials`).all<Record<string, unknown>>();
-    for (const m of results) materials.set(m["assignment_id"] as string, m);
-  } catch (e) {
-    if (!(e instanceof Error && /no such table: canvas_materials/.test(e.message))) throw e;
+  for (const m of await optionalRows(env.DB, `SELECT * FROM canvas_materials`, "canvas_materials")) {
+    materials.set(m["assignment_id"] as string, m);
+  }
+  const links = new Map<number, Record<string, unknown>>();
+  for (const l of await optionalRows(env.DB, `SELECT task_id, url, label FROM task_links`, "task_links")) {
+    links.set(l["task_id"] as number, l);
   }
   for (const t of tasks) {
     const m = t["assignment_id"] ? materials.get(t["assignment_id"] as string) : undefined;
     t["canvas_material_url"] = m?.["html_url"] ?? null;
     t["canvas_material_title"] = m?.["title"] ?? null;
     t["canvas_material_download_url"] = m?.["download_url"] ?? null;
+    const l = links.get(t["id"] as number);
+    t["link_url"] = l?.["url"] ?? null;
+    t["link_label"] = l?.["label"] ?? null;
   }
 
   const { results: assignments } = await env.DB.prepare(

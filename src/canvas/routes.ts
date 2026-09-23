@@ -17,7 +17,7 @@ function json(body: unknown, status = 200): Response {
 
 type ConfigResult = { cfg: CanvasConfig } | { error: string };
 
-function loadConfig(env: Env): ConfigResult {
+export function loadConfig(env: Env): ConfigResult {
   try {
     const cfg = getCanvasConfig(env);
     return cfg ? { cfg } : { error: "Canvas is not configured (set CANVAS_BASE_URL and the CANVAS_API_TOKEN secret)" };
@@ -61,7 +61,7 @@ export async function getCanvasStatus(env: Env) {
   };
 }
 
-function canvasClient(env: Env, cfg: CanvasConfig): CanvasClient {
+export function canvasClient(env: Env, cfg: CanvasConfig): CanvasClient {
   const maxRequests = Number(env.CANVAS_MAX_REQUESTS);
   return new CanvasClient(cfg, Number.isInteger(maxRequests) && maxRequests > 0 ? { maxRequests } : {});
 }

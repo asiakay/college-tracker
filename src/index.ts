@@ -15,9 +15,10 @@
  */
 
 import { isWriteAuthorized, requiresLogin } from "./auth";
+import { previewBreakdown, saveBreakdown } from "./breakdown";
 import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
-import { listMicrotasks, promoteAssignmentStmt, recordTaskCreated, remainingMinutesByAssignment, saveColumn } from "./microtasks";
+import { listMicrotasks, materialAssignmentIds, promoteAssignmentStmt, recordTaskCreated, remainingMinutesByAssignment, saveColumn } from "./microtasks";
 import { suggestNext } from "./suggest";
 export type { Env } from "./env";
 
@@ -396,7 +397,12 @@ export default {
          ORDER BY a.due_date ASC`
       ).bind(days).all();
       const remaining = await remainingMinutesByAssignment(env.DB);
-      const deadlines = results.map((r) => ({ ...r, est_remaining_min: remaining.get(r["id"] as string) ?? null }));
+      const materials = await materialAssignmentIds(env.DB);
+      const deadlines = results.map((r) => ({
+        ...r,
+        est_remaining_min: remaining.get(r["id"] as string) ?? null,
+        has_canvas_material: materials.has(r["id"] as string),
+      }));
       return new Response(JSON.stringify({ deadlines, days_ahead: days }), { headers: CORS });
     }
 
@@ -804,6 +810,28 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
         if (row) { tasks.push(row); await recordTaskCreated(env.DB, row["id"], "To Do"); }
       }
       return new Response(JSON.stringify({ tasks, count: tasks.length }), { headers: CORS });
+    }
+
+    // Break down from the linked Canvas file: preview (no writes), then save the kept steps.
+    const breakdownMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/(breakdown-preview|tasks\/bulk)$/);
+    if (breakdownMatch && request.method === "POST") {
+      if (!(await isWriteAuthorized(request, env))) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });
+      }
+      const assignmentId = decodeURIComponent(breakdownMatch[1]!);
+      let result;
+      if (breakdownMatch[2] === "breakdown-preview") {
+        result = await previewBreakdown(env, assignmentId);
+      } else {
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: CORS });
+        }
+        result = await saveBreakdown(env, assignmentId, body as Record<string, unknown>);
+      }
+      const status = "error" in result ? result.status : 200;
+      const payload = "error" in result ? { error: result.error } : result;
+      return new Response(JSON.stringify(payload), { status, headers: CORS });
     }
 
     // ── Micro-task board ─────────────────────────────────────────────────────

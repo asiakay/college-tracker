@@ -31,8 +31,7 @@ export async function runConfiguredSync(env: Env, trigger: SyncTrigger): Promise
   const loaded = loadConfig(env);
   if ("error" in loaded) return loaded;
   const { cfg } = loaded;
-  const maxRequests = Number(env.CANVAS_MAX_REQUESTS);
-  const client = new CanvasClient(cfg, Number.isInteger(maxRequests) && maxRequests > 0 ? { maxRequests } : {});
+  const client = canvasClient(env, cfg);
   return runCanvasSync(env.DB, client, {
     trigger,
     host: cfg.host,
@@ -60,6 +59,22 @@ export async function getCanvasStatus(env: Env) {
     running: !!lock?.locked_until && lock.locked_until > new Date().toISOString(),
     last_run: last ? { ...run, summary: summary_json ? JSON.parse(summary_json) : null } : null,
   };
+}
+
+function canvasClient(env: Env, cfg: CanvasConfig): CanvasClient {
+  const maxRequests = Number(env.CANVAS_MAX_REQUESTS);
+  return new CanvasClient(cfg, Number.isInteger(maxRequests) && maxRequests > 0 ? { maxRequests } : {});
+}
+
+function canvasFailure(e: unknown): Response {
+  if (!(e instanceof CanvasError)) throw e;
+  return json({ error: e.message }, e.kind === "not_found" ? 404 : 502);
+}
+
+/** Only links into the configured Canvas are stored or shown. */
+function canvasHtmlUrl(raw: unknown, origin: string): string | null {
+  if (typeof raw !== "string") return null;
+  try { return new URL(raw).origin === origin ? raw : null; } catch { return null; }
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -210,6 +225,76 @@ export async function handleCanvasRoute(request: Request, env: Env, url: URL): P
       throw e;
     }
     return json({ canvas_id: canvasId, local_assignment_id: assignmentId, link_method: "manual" });
+  }
+
+  // ── Module materials: read live from Canvas, the chosen item stored locally ──
+
+  const modules = path.match(/^\/api\/canvas\/courses\/([^/]+)\/modules$/);
+  if (modules && method === "GET") {
+    const canvasId = modules[1]!;
+    if (!CANVAS_ID.test(canvasId)) return json({ error: "Invalid Canvas course id" }, 400);
+    const cc = await env.DB.prepare(`SELECT canvas_id FROM canvas_courses WHERE canvas_host = ? AND canvas_id = ?`)
+      .bind(host, canvasId).first();
+    if (!cc) return json({ error: "Canvas course not found — run a sync first" }, 404);
+    try {
+      const list = await canvasClient(env, loaded.cfg).listModules(canvasId);
+      return json({
+        modules: list.map((m) => ({
+          id: m.id,
+          name: m.name ?? `Module ${m.id}`,
+          items: (m.items ?? []).flatMap((i) => {
+            const htmlUrl = canvasHtmlUrl(i.html_url, loaded.cfg.origin);
+            return i.type === "SubHeader" || !htmlUrl ? [] : [{ id: i.id, title: i.title ?? `Item ${i.id}`, type: i.type ?? null, html_url: htmlUrl }];
+          }),
+        })),
+      });
+    } catch (e) {
+      return canvasFailure(e);
+    }
+  }
+
+  if (path === "/api/canvas/materials" && method === "POST") {
+    const body = await readBody(request);
+    if (!body) return json({ error: "Invalid JSON" }, 400);
+    const { assignment_id: assignmentId, canvas_course_id: courseId, module_id: moduleId, item_id: itemId } = body;
+    if (typeof assignmentId !== "string" || !assignmentId) return json({ error: "assignment_id is required" }, 422);
+    for (const [name, v] of [["canvas_course_id", courseId], ["module_id", moduleId], ["item_id", itemId]] as const) {
+      if (typeof v !== "string" || !CANVAS_ID.test(v)) return json({ error: `${name} must be a Canvas id` }, 422);
+    }
+    const linked = await env.DB.prepare(
+      `SELECT a.id FROM assignments a JOIN canvas_courses cc ON cc.local_course_id = a.course_id
+       WHERE a.id = ? AND cc.canvas_host = ? AND cc.canvas_id = ?`,
+    ).bind(assignmentId, host, courseId).first();
+    if (!linked) return json({ error: "The assignment's course is not linked to that Canvas course" }, 422);
+
+    let item;
+    try {
+      item = await canvasClient(env, loaded.cfg).getModuleItem(courseId as string, moduleId as string, itemId as string);
+    } catch (e) {
+      return canvasFailure(e);
+    }
+    const htmlUrl = canvasHtmlUrl(item.html_url, loaded.cfg.origin);
+    if (!htmlUrl) return json({ error: "That module item has no Canvas page to open" }, 422);
+    const row = {
+      assignment_id: assignmentId, canvas_course_id: courseId, module_id: moduleId, item_id: itemId,
+      title: item.title ?? `Item ${itemId}`, item_type: item.type ?? null, html_url: htmlUrl,
+    };
+    await env.DB.prepare(
+      `INSERT INTO canvas_materials (assignment_id, canvas_host, canvas_course_id, module_id, item_id, title, item_type, html_url, linked_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (assignment_id) DO UPDATE SET canvas_host = excluded.canvas_host, canvas_course_id = excluded.canvas_course_id,
+         module_id = excluded.module_id, item_id = excluded.item_id, title = excluded.title,
+         item_type = excluded.item_type, html_url = excluded.html_url, linked_at = excluded.linked_at`,
+    ).bind(assignmentId, host, courseId, moduleId, itemId, row.title, row.item_type, htmlUrl, new Date().toISOString()).run();
+    return json(row);
+  }
+
+  if (path === "/api/canvas/materials/unlink" && method === "POST") {
+    const body = await readBody(request);
+    const assignmentId = body?.["assignment_id"];
+    if (typeof assignmentId !== "string" || !assignmentId) return json({ error: "assignment_id is required" }, 422);
+    await env.DB.prepare(`DELETE FROM canvas_materials WHERE assignment_id = ?`).bind(assignmentId).run();
+    return json({ assignment_id: assignmentId, unlinked: true });
   }
 
   return json({ error: "Not found" }, 404);

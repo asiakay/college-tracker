@@ -123,12 +123,18 @@ let mtTasks = [];
 let mtProgress = null;
 let mtSortables = [];
 let mtSaving = false;
-let mtPicks = []; // Claude's suggestions, highlighted until the next load or drag
+let mtPicks = []; // Claude's saved suggestions, kept until the student asks again
+let mtPicksMeta = { picked_at: null, done_since: 0 };
 
 async function loadTasks() {
-  mtPicks = [];
-  renderSuggestions();
-  const data = await get('/api/microtasks').catch(() => null);
+  const [data, picks] = await Promise.all([
+    get('/api/microtasks').catch(() => null),
+    get('/api/microtasks/picks').catch(() => null),
+  ]);
+  if (picks && !picks.error) {
+    mtPicks = picks.picks || [];
+    mtPicksMeta = { picked_at: picks.picked_at, done_since: picks.done_since || 0 };
+  }
   if (!data) {
     document.getElementById('mt-progress').innerHTML = `<div class="empty">Couldn't load micro-tasks.</div>`;
     return;
@@ -137,6 +143,7 @@ async function loadTasks() {
   mtProgress = data.progress;
   populateTaskFilters();
   renderTasks();
+  renderSuggestions();
 }
 
 function mtVisible(t) {
@@ -285,7 +292,7 @@ function renderTasks() {
 }
 
 /** Where a pick should take the student in Canvas: the chosen module file, the assignment, else the course. */
-function pickCanvasLinks(t) {
+function pickCanvasLinks(t, { linksOnly = false } = {}) {
   if (!t) return '';
   const links = [];
   if (t.canvas_material_url) {
@@ -293,7 +300,7 @@ function pickCanvasLinks(t) {
     if (t.canvas_material_download_url) {
       links.push(`<a class="mt-open-canvas secondary" href="${esc(t.canvas_material_download_url)}" target="_blank" rel="noopener" title="Download from Canvas (you must be logged in to Canvas)">⬇ Download</a>`);
     }
-    if (t.canvas_material_download_url && t.assignment_id) {
+    if (t.canvas_material_download_url && t.assignment_id && !linksOnly) {
       links.push(`<button type="button" class="mt-link-btn mt-breakdown-btn" data-asn="${esc(t.assignment_id)}" data-file="${esc(t.canvas_material_title || '')}"
         title="Have Claude turn this file into concrete steps you can review">✨ Break down this file</button>`);
     }
@@ -302,12 +309,13 @@ function pickCanvasLinks(t) {
     links.push(`<a class="mt-open-canvas${t.canvas_material_url ? ' secondary' : ''}" href="${esc(t.canvas_url)}" target="_blank" rel="noopener">Open in Canvas ↗</a>`);
   }
   if (!t.canvas_course_url) return links.join(' ');
+  if (linksOnly && t.canvas_material_url) return links.join(' ');
   if (!t.canvas_material_url && !t.canvas_url) {
     // Many courses post work as files in Modules rather than as Canvas assignments.
     const modules = `${String(t.canvas_course_url).replace(/\/+$/, '')}/modules`;
     links.push(`<a class="mt-open-canvas secondary" href="${esc(modules)}" target="_blank" rel="noopener">Course modules ↗</a>`);
   }
-  if (t.assignment_id) {
+  if (t.assignment_id && !linksOnly) {
     const data = `data-asn="${esc(t.assignment_id)}" data-ccid="${esc(t.canvas_course_id)}"`;
     links.push(`<button type="button" class="mt-link-btn" data-kind="material" ${data}
       title="Choose the file or page in Canvas Modules for this assignment">${t.canvas_material_url ? 'Change file…' : 'Link module file…'}</button>`);
@@ -330,7 +338,8 @@ function bindCanvasLinkers(root) {
 async function reloadKeepingPicks() {
   const keep = mtPicks;
   await loadTasks();
-  mtPicks = keep;
+  // Before migration 0014 picks aren't saved, so keep the ones on screen.
+  if (!mtPicksMeta.picked_at && !mtPicks.length) mtPicks = keep;
   renderTasks();
   renderSuggestions();
 }
@@ -369,12 +378,25 @@ async function showMaterialLinker(btn) {
   });
 }
 
+function picksHeading() {
+  const bits = ['Claude suggests'];
+  if (mtPicksMeta.picked_at) bits.push(`picked ${ago(mtPicksMeta.picked_at)}`);
+  if (mtPicksMeta.done_since) bits.push(`${mtPicksMeta.done_since} done ✓`);
+  return bits.join(' · ');
+}
+
 function renderSuggestions() {
   const el = document.getElementById('mt-suggest');
   if (!el) return;
-  if (!mtPicks.length) { el.hidden = true; el.innerHTML = ''; return; }
+  const btn = document.getElementById('mt-suggest-btn');
+  if (btn && !btn.disabled) btn.textContent = mtPicks.length || mtPicksMeta.done_since ? '✨ Ask again' : '✨ What should I do next?';
+  if (!mtPicks.length) {
+    el.hidden = !mtPicksMeta.done_since;
+    el.innerHTML = mtPicksMeta.done_since ? `<div class="mt-suggest-head">${esc(picksHeading())}</div><div class="mt-suggest-reason">All picks done — ask again for the next ones.</div>` : '';
+    return;
+  }
   el.hidden = false;
-  el.innerHTML = `<div class="mt-suggest-head">Claude suggests</div><ol>${mtPicks.map(p => {
+  el.innerHTML = `<div class="mt-suggest-head">${esc(picksHeading())}</div><ol>${mtPicks.map(p => {
     const t = mtTasks.find(x => x.id === p.task_id);
     return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div><div class="mt-suggest-links">${pickCanvasLinks(t)}</div></li>`;
   }).join('')}</ol>`;
@@ -526,6 +548,7 @@ async function suggestNextTask() {
     const res = await api('/api/microtasks/suggest', { method: 'POST', body: '{}' });
     if (res.error) throw new Error(res.error);
     mtPicks = res.picks || [];
+    mtPicksMeta = { picked_at: res.picked_at || null, done_since: 0 };
     if (!mtPicks.length) toast('Nothing open to suggest — add tasks with “Break down →”');
     renderTasks();
     renderSuggestions();
@@ -535,7 +558,7 @@ async function suggestNextTask() {
     if (e.message !== 'Unauthorized') toast(`Couldn't get a suggestion: ${e.message}`, 'fail');
   } finally {
     btn.disabled = false;
-    btn.textContent = '✨ What should I do next?';
+    renderSuggestions();
   }
 }
 
@@ -625,9 +648,63 @@ async function loadToday() {
   const [dl, tasks] = await Promise.all([
     get('/api/deadlines?days=7').catch(() => ({ deadlines: [] })),
     get(`/api/tasks?date=${today()}`).catch(() => ({ tasks: [] })),
+    loadTodayNext(),
   ]);
   renderTodayDeadlines(dl.deadlines || []);
   renderTodayTasks(tasks.tasks || []);
+}
+
+/** "Up next": Claude's saved picks, with their links. */
+async function loadTodayNext(unsaved = null) {
+  const el = document.getElementById('today-next');
+  if (!el) return;
+  const [picks, board] = await Promise.all([
+    get('/api/microtasks/picks').catch(() => null),
+    get('/api/microtasks').catch(() => null),
+  ]);
+  if (!picks || picks.error || !board || board.error) { el.innerHTML = ''; return; }
+  mtPicks = picks.picks || [];
+  mtPicksMeta = { picked_at: picks.picked_at, done_since: picks.done_since || 0 };
+  if (!mtPicks.length && !picks.picked_at && unsaved) mtPicks = unsaved; // before migration 0014
+  const tasks = board.tasks || [];
+  const rows = mtPicks.map((p, i) => ({ p, i, t: tasks.find(x => x.id === p.task_id) })).filter(r => r.t);
+  const head = `<div class="today-col-title today-next-head">
+      <span>Up next${mtPicksMeta.picked_at ? ` <span class="today-next-meta">· picked ${ago(mtPicksMeta.picked_at)}${mtPicksMeta.done_since ? ` · ${mtPicksMeta.done_since} done ✓` : ''}</span>` : ''}</span>
+      <a href="#" class="today-next-board">Open board →</a>
+    </div>`;
+  if (!rows.length) {
+    el.innerHTML = `${head}<div class="card today-next-empty">
+        ${mtPicksMeta.done_since ? 'All of Claude’s picks are done. ' : ''}Not sure where to start?
+        <button type="button" class="mt-suggest-btn" id="today-suggest-btn">✨ What should I do next?</button>
+      </div>`;
+  } else {
+    el.innerHTML = head + rows.map(({ p, i, t }) => `<div class="card today-next-card mt-pick-${i + 1}">
+        <div class="today-next-top"><span class="mt-pick-badge">#${i + 1}</span> <strong>${esc(t.description)}</strong></div>
+        <div class="mt-meta">
+          ${t.course_name ? `<span class="chip chip-course">${esc(t.course_name)}</span>` : ''}
+          ${t.assignment_title ? `<span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}
+          ${t.time_spent ? `<span class="today-next-time">⏱ ${esc(t.time_spent)}</span>` : ''}
+        </div>
+        <div class="mt-suggest-reason">${esc(p.reason)}</div>
+        <div class="mt-suggest-links">${t.link_url ? `<a class="mt-task-link" href="${esc(t.link_url)}" target="_blank" rel="noopener">▶ ${esc(t.link_label || 'Open link')} ↗</a>` : ''}${pickCanvasLinks(t, { linksOnly: true })}</div>
+      </div>`).join('');
+  }
+  el.querySelector('.today-next-board')?.addEventListener('click', e => { e.preventDefault(); switchTab('tasks'); });
+  el.querySelector('#today-suggest-btn')?.addEventListener('click', async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Thinking…';
+    let unsaved = null;
+    try {
+      const res = await api('/api/microtasks/suggest', { method: 'POST', body: '{}' });
+      if (res.error) throw new Error(res.error);
+      if (!(res.picks || []).length) toast('Nothing open to suggest — add tasks with “Break down →”');
+      if (!res.picked_at) unsaved = res.picks || [];
+    } catch (err) {
+      if (err.message !== 'Unauthorized') toast(`Couldn't get a suggestion: ${err.message}`, 'fail');
+    }
+    await loadTodayNext(unsaved);
+  });
 }
 
 function renderTodayDeadlines(items) {

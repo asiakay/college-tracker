@@ -47,7 +47,47 @@ interface OpenTask {
   weight_pct: number | null; canvas_points: number | null; canvas_missing: number | null; canvas_late: number | null;
 }
 
-export async function suggestNext(env: Env): Promise<{ picks: Pick[] } | { error: string; status: number }> {
+function missingPicksTable(e: unknown): boolean {
+  return e instanceof Error && e.message.includes("no such table: task_picks");
+}
+
+/** Saves the picks as the current set (best effort before migration 0014). */
+async function savePicks(db: D1Database, picks: Pick[], at: string): Promise<boolean> {
+  try {
+    await db.batch([
+      db.prepare(`DELETE FROM task_picks`),
+      ...picks.map((p, i) => db.prepare(`INSERT INTO task_picks (rank, task_id, reason, picked_at) VALUES (?, ?, ?, ?)`)
+        .bind(i + 1, p.task_id, p.reason, at)),
+    ]);
+    return true;
+  } catch (e) {
+    if (missingPicksTable(e)) return false;
+    throw e;
+  }
+}
+
+/**
+ * The saved picks that are still open, best first. Finished picks drop out
+ * (counted in done_since); deleted tasks are removed by the foreign key.
+ */
+export async function savedPicks(env: Env): Promise<{ picks: Pick[]; picked_at: string | null; done_since: number }> {
+  let rows: Array<{ task_id: number; reason: string; picked_at: string; status: string }>;
+  try {
+    ({ results: rows } = await env.DB.prepare(
+      `SELECT p.task_id, p.reason, p.picked_at, t.status FROM task_picks p JOIN tasks t ON t.id = p.task_id ORDER BY p.rank`,
+    ).all());
+  } catch (e) {
+    if (missingPicksTable(e)) return { picks: [], picked_at: null, done_since: 0 };
+    throw e;
+  }
+  return {
+    picks: rows.filter((r) => r.status !== "Done").map((r) => ({ task_id: r.task_id, reason: r.reason })),
+    picked_at: rows[0]?.picked_at ?? null,
+    done_since: rows.filter((r) => r.status === "Done").length,
+  };
+}
+
+export async function suggestNext(env: Env): Promise<{ picks: Pick[]; picked_at: string | null } | { error: string; status: number }> {
   if (!env.ANTHROPIC_API_KEY) return { error: "ANTHROPIC_API_KEY not configured", status: 503 };
 
   const { results } = await env.DB.prepare(
@@ -63,7 +103,7 @@ export async function suggestNext(env: Env): Promise<{ picks: Pick[] } | { error
      ORDER BY p.position IS NULL, p.position, a.due_date IS NULL, a.due_date, t.created_at, t.id
      LIMIT ?`,
   ).bind(MAX_TASKS).all<OpenTask>();
-  if (!results.length) return { picks: [] };
+  if (!results.length) return { picks: [], picked_at: null };
 
   const tz = isValidTimeZone(env.CANVAS_TIMEZONE) ? env.CANVAS_TIMEZONE : "UTC";
   const today = localDate(new Date().toISOString(), tz)!;
@@ -118,5 +158,7 @@ export async function suggestNext(env: Env): Promise<{ picks: Pick[] } | { error
     picks.push({ task_id: id, reason: reason.trim().slice(0, 200) });
     if (picks.length === MAX_PICKS) break;
   }
-  return { picks };
+  const at = new Date().toISOString();
+  const saved = await savePicks(env.DB, picks, at);
+  return { picks, picked_at: saved ? at : null };
 }

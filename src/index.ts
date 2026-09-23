@@ -19,7 +19,7 @@ import { previewBreakdown, saveBreakdown } from "./breakdown";
 import { getCanvasStatus, handleCanvasRoute, runConfiguredSync } from "./canvas/routes";
 import type { Env } from "./env";
 import { listMicrotasks, materialAssignmentIds, promoteAssignmentStmt, recordTaskCreated, remainingMinutesByAssignment, saveColumn } from "./microtasks";
-import { suggestNext } from "./suggest";
+import { savedPicks, suggestNext } from "./suggest";
 export type { Env } from "./env";
 
 const CORS = {
@@ -839,6 +839,9 @@ Map types: quiz/midterm/final/test → Exam; lab/homework/problem set/worksheet/
       return new Response(JSON.stringify(await listMicrotasks(env, url)), { headers: CORS });
     }
     // Claude's "what should I do next?" pick — spends API credit, so write auth.
+    if (url.pathname === "/api/microtasks/picks" && request.method === "GET") {
+      return new Response(JSON.stringify(await savedPicks(env)), { headers: CORS });
+    }
     if (url.pathname === "/api/microtasks/suggest" && request.method === "POST") {
       if (!(await isWriteAuthorized(request, env))) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: CORS });

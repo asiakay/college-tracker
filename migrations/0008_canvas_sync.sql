@@ -36,7 +36,9 @@ CREATE TABLE IF NOT EXISTS canvas_assignments (
     canvas_id TEXT NOT NULL,
     canvas_course_id TEXT NOT NULL,
     local_assignment_id TEXT REFERENCES assignments(id) ON DELETE SET NULL,
-    link_method TEXT CHECK (link_method IN ('created', 'title_match', 'manual')),
+    -- created / title_match / manual = linked; ignored = student unlinked it,
+    -- so sync keeps the snapshot current but never re-links or re-creates it.
+    link_method TEXT CHECK (link_method IN ('created', 'title_match', 'manual', 'ignored')),
     name TEXT NOT NULL,
     due_at TEXT,
     due_date_local TEXT,

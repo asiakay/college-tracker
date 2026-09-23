@@ -7,6 +7,7 @@ import { accessConfig, isWriteAuthorized } from "../auth";
 import type { Env } from "../env";
 import { CanvasClient, CanvasError, getCanvasConfig, type CanvasConfig } from "./client";
 import { runCanvasSync, type SyncResult, type SyncTrigger } from "./sync";
+import { readMaterialLinks } from "../materials";
 
 const HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 const CANVAS_ID = /^\d+(~\d+)?$/;
@@ -298,7 +299,9 @@ export async function handleCanvasRoute(request: Request, env: Env, url: URL): P
       }
       throw e;
     }
-    return json(row);
+    // Best effort: the item stays linked even if its file can't be read.
+    const read = await readMaterialLinks(env.DB, canvasClient(env, loaded.cfg), loaded.cfg.origin, assignmentId);
+    return json({ ...row, links: "links" in read ? read.links : [], ...("error" in read ? { links_error: read.error } : {}) });
   }
 
   if (path === "/api/canvas/materials/unlink" && method === "POST") {
@@ -306,6 +309,8 @@ export async function handleCanvasRoute(request: Request, env: Env, url: URL): P
     const assignmentId = body?.["assignment_id"];
     if (typeof assignmentId !== "string" || !assignmentId) return json({ error: "assignment_id is required" }, 422);
     await env.DB.prepare(`DELETE FROM canvas_materials WHERE assignment_id = ?`).bind(assignmentId).run();
+    await env.DB.prepare(`DELETE FROM canvas_material_links WHERE assignment_id = ?`).bind(assignmentId).run()
+      .catch((e: unknown) => { if (!(e instanceof Error && e.message.includes("no such table"))) throw e; });
     return json({ assignment_id: assignmentId, unlinked: true });
   }
 

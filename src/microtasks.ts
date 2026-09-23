@@ -147,6 +147,12 @@ export async function listMicrotasks(env: Env, url: URL) {
   for (const m of await optionalRows(env.DB, `SELECT * FROM canvas_materials`, "canvas_materials")) {
     materials.set(m["assignment_id"] as string, m);
   }
+  const docLinks = new Map<string, Array<{ url: string; label: string }>>();
+  for (const l of await optionalRows(env.DB, `SELECT assignment_id, url, label FROM canvas_material_links ORDER BY assignment_id, position`, "canvas_material_links")) {
+    const list = docLinks.get(l["assignment_id"] as string) ?? [];
+    list.push({ url: l["url"] as string, label: l["label"] as string });
+    docLinks.set(l["assignment_id"] as string, list);
+  }
   const links = new Map<number, Record<string, unknown>>();
   for (const l of await optionalRows(env.DB, `SELECT task_id, url, label FROM task_links`, "task_links")) {
     links.set(l["task_id"] as number, l);
@@ -156,6 +162,8 @@ export async function listMicrotasks(env: Env, url: URL) {
     t["canvas_material_url"] = m?.["html_url"] ?? null;
     t["canvas_material_title"] = m?.["title"] ?? null;
     t["canvas_material_download_url"] = m?.["download_url"] ?? null;
+    t["canvas_material_links"] = t["assignment_id"] ? docLinks.get(t["assignment_id"] as string) ?? [] : [];
+    t["canvas_material_links_read"] = !!m?.["links_read_at"];
     const l = links.get(t["id"] as number);
     t["link_url"] = l?.["url"] ?? null;
     t["link_label"] = l?.["label"] ?? null;

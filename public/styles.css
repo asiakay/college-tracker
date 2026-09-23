@@ -1120,3 +1120,12 @@ a:hover { text-decoration: underline; }
 .pick-steps-more { font-size: 12px; color: var(--ink-low); margin: 2px 0 0 6px; }
 .pick-materials { margin-top: 6px; }
 .pick-materials-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-low); margin-right: 2px; }
+
+/* Links found inside the linked module file */
+.mt-doc-link {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  font-size: 12px; font-weight: 500; padding: 4px 9px; border-radius: 6px;
+  color: var(--accent); background: var(--accent-dim); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mt-doc-link:hover { text-decoration: underline; }

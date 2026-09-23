@@ -13,6 +13,10 @@ describe("extractDocument", () => {
     expect(doc.text).toContain("Slides (https://www.slideshare.net/mrmularella/scientific-method-95777)");
     expect(doc.text).toContain("Answer worksheet page 3 & 4 (22 Questions Total)\tthen upload");
     expect(doc.text).toContain("[page break]\nScientific Method Worksheet");
+    expect(doc.linkItems).toEqual([
+      { url: "https://www.slideshare.net/mrmularella/scientific-method-95777", label: "Slides" },
+      { url: "https://www.khanacademy.org/science/v/the-scientific-method", label: "Review Scientific Method Video (11:48 Total)" },
+    ]);
     expect(doc.links).toEqual([
       "https://www.slideshare.net/mrmularella/scientific-method-95777",
       "https://www.khanacademy.org/science/v/the-scientific-method",
@@ -23,7 +27,10 @@ describe("extractDocument", () => {
     const pdf = await extractDocument(new Uint8Array([37, 80, 68, 70]), "application/pdf", "hw.pdf");
     expect(pdf.kind).toBe("pdf");
     const html = await extractDocument(new TextEncoder().encode(`<p>Watch <a href="https://x.edu/v">this</a></p><script>bad()</script>`), "text/html", "p.html");
-    expect(html).toEqual({ kind: "text", text: "Watch this (https://x.edu/v)", links: ["https://x.edu/v"] });
+    expect(html).toEqual({
+      kind: "text", text: "Watch this (https://x.edu/v)", links: ["https://x.edu/v"],
+      linkItems: [{ url: "https://x.edu/v", label: "Watch this" }],
+    });
   });
 
   it("finds links in PDF annotations and compressed streams", async () => {
@@ -40,6 +47,19 @@ describe("extractDocument", () => {
     for (const p of parts) { pdf.set(p, o); o += p.length; }
     expect(await pdfLinks(pdf)).toEqual(expect.arrayContaining(["https://slides.example/sci(1)", "https://www.khanacademy.org/v/sci"]));
     expect((await extractDocument(pdf, "application/pdf", "hw.pdf")).links).toContain("https://www.khanacademy.org/v/sci");
+  });
+
+  it("labels links from their own text, the line above, or the host", async () => {
+    const { labelLinks } = await import("../src/docs");
+    const text = "Slides: Week 1 deck (https://a.example/1)\n\n• Watch the demo video:\nhttps://b.example/2\nhttps://c.example/3";
+    expect(labelLinks(text, ["https://c.example/3", "https://a.example/1", "https://b.example/2", "https://www.d.example/4"])).toEqual([
+      { url: "https://a.example/1", label: "Slides: Week 1 deck" },
+      { url: "https://b.example/2", label: "Watch the demo video" },
+      { url: "https://c.example/3", label: "Watch the demo video" },
+      { url: "https://www.d.example/4", label: "d.example" },
+    ]);
+    const many = Array.from({ length: 25 }, (_, i) => `https://e.example/${i}`);
+    expect(labelLinks(many.join("\n"), many)).toHaveLength(20);
   });
 
   it("rejects files it can't read", async () => {

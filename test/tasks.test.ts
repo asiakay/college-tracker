@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { ACCESS_ENV, mockAccess } from "./access";
 import { call } from "./helpers";
 
 async function asnStatus(id: string) {
@@ -39,11 +40,12 @@ describe("POST /api/assignments/:id/generate-tasks auth", () => {
     const res = await call("/api/assignments/NOPE/generate-tasks", { method: "POST", token: null });
     expect(res.status).toBe(401);
   });
-  it("lets a Cloudflare Access user through without a token", async () => {
+  it("lets a verified Cloudflare Access user through without a token", async () => {
+    const jwt = await mockAccess();
     const res = await call("/api/assignments/NOPE/generate-tasks", {
-      method: "POST", token: null,
-      headers: { "Cf-Access-Authenticated-User-Email": "me@example.edu", "Cf-Access-Jwt-Assertion": "jwt" },
+      method: "POST", token: null, env: ACCESS_ENV, headers: { "Cf-Access-Jwt-Assertion": await jwt() },
     });
     expect(res.status).toBe(404); // past auth; the assignment doesn't exist
+    vi.restoreAllMocks();
   });
 });

@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ACCESS_ENV, mockAccess } from "./access";
 import { call } from "./helpers";
 
 const ORIGIN = "https://school.instructure.com";
@@ -45,8 +46,6 @@ describe("/api/canvas auth", () => {
 });
 
 describe("/api/canvas auth follows the app's write rule", () => {
-  const ACCESS = { "Cf-Access-Authenticated-User-Email": "me@example.edu", "Cf-Access-Jwt-Assertion": "jwt" };
-
   it("is open without a token when MCP_SECRET_TOKEN is unset, like other routes", async () => {
     const open = { MCP_SECRET_TOKEN: undefined };
     expect((await call("/api/canvas/status", { token: null, env: open })).status).toBe(200);
@@ -54,8 +53,11 @@ describe("/api/canvas auth follows the app's write rule", () => {
     expect(await res.json()).toMatchObject({ status: "succeeded" });
   });
 
-  it("accepts a Cloudflare Access identity instead of a token", async () => {
-    expect((await call("/api/canvas/status", { token: null, headers: ACCESS })).status).toBe(200);
+  it("accepts a verified Cloudflare Access login instead of a token", async () => {
+    vi.restoreAllMocks();
+    const jwt = await mockAccess();
+    const res = await call("/api/canvas/status", { token: null, env: ACCESS_ENV, headers: { "Cf-Access-Jwt-Assertion": await jwt() } });
+    expect(res.status).toBe(200);
   });
 
   it("runs MCP canvas tools when /mcp is open", async () => {

@@ -29,12 +29,23 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           COURSE_ID: ${{ inputs.course_id }}
           FILE_PATH: ${{ inputs.syllabus_path }}
           FILE_TYPE: ${{ inputs.file_type }}
         run: |
+          # Worker calls go through Cloudflare Access when it's enabled: send the
+          # service token if one is configured.
+          wcurl() {
+            if [ -n "$CF_ACCESS_CLIENT_ID" ]; then
+              curl -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" "$@"
+            else
+              curl "$@"
+            fi
+          }
           # Get course name for the prompt
-          COURSE_RESP=$(curl -s "$WORKER_URL/api/courses")
+          COURSE_RESP=$(wcurl -s "$WORKER_URL/api/courses")
           COURSE_NAME=$(echo "$COURSE_RESP" | jq -r --arg id "$COURSE_ID" \
             '.courses[] | select(.id == $id) | .name // empty' 2>/dev/null || echo "")
           COURSE_LABEL="${COURSE_NAME:-$COURSE_ID} ($COURSE_ID)"
@@ -123,12 +134,23 @@ jobs:
       - name: Generate IDs and persist assignments
         env:
           WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           TOKEN: ${{ secrets.MCP_SECRET_TOKEN }}
           COURSE_ID: ${{ inputs.course_id }}
           ASSIGNMENTS: ${{ steps.parse.outputs.assignments }}
         run: |
+          # Worker calls go through Cloudflare Access when it's enabled: send the
+          # service token if one is configured.
+          wcurl() {
+            if [ -n "$CF_ACCESS_CLIENT_ID" ]; then
+              curl -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" "$@"
+            else
+              curl "$@"
+            fi
+          }
           # Find next available assignment ID suffix
-          EXISTING=$(curl -s "$WORKER_URL/api/assignments?course_id=$COURSE_ID")
+          EXISTING=$(wcurl -s "$WORKER_URL/api/assignments?course_id=$COURSE_ID")
           MAX_SUFFIX=$(echo "$EXISTING" | jq '
             [.assignments[]?.id // empty
               | capture("-A(?<n>[0-9]+)$")?.n // "0"
@@ -136,7 +158,7 @@ jobs:
           echo "Max existing suffix: $MAX_SUFFIX"
 
           # Get OKR ID for this course
-          COURSE_RESP=$(curl -s "$WORKER_URL/api/courses")
+          COURSE_RESP=$(wcurl -s "$WORKER_URL/api/courses")
           OKR_ID=$(echo "$COURSE_RESP" | jq -r --arg id "$COURSE_ID" \
             '.courses[] | select(.id == $id) | .okr_id // "KR-ACAD-1"')
           echo "OKR: $OKR_ID"
@@ -165,7 +187,7 @@ jobs:
                 notes: (.notes // null)
               }')
 
-            RESP=$(curl -s -X POST "$WORKER_URL/api/assignments" \
+            RESP=$(wcurl -s -X POST "$WORKER_URL/api/assignments" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $TOKEN" \
               -d "$PAYLOAD")

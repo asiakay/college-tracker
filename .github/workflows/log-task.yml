@@ -37,6 +37,8 @@ jobs:
       - name: Log task
         env:
           WORKER_URL: ${{ vars.COLLEGE_TRACKER_URL || 'https://college-tracker.asialakaygrady-6d4.workers.dev' }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           TOKEN: ${{ secrets.MCP_SECRET_TOKEN }}
           DESCRIPTION: ${{ inputs.description }}
           OKR_ID: ${{ inputs.okr_id }}
@@ -45,6 +47,15 @@ jobs:
           STATUS: ${{ inputs.status }}
           NOTES: ${{ inputs.notes }}
         run: |
+          # Worker calls go through Cloudflare Access when it's enabled: send the
+          # service token if one is configured.
+          wcurl() {
+            if [ -n "$CF_ACCESS_CLIENT_ID" ]; then
+              curl -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" "$@"
+            else
+              curl "$@"
+            fi
+          }
           PAYLOAD=$(jq -n \
             --arg desc  "$DESCRIPTION" \
             --arg okr   "$OKR_ID" \
@@ -65,7 +76,7 @@ jobs:
           echo "=== Payload ==="
           echo "$PAYLOAD" | jq .
 
-          RESP=$(curl -s -X POST \
+          RESP=$(wcurl -s -X POST \
             "$WORKER_URL/api/tasks" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $TOKEN" \

@@ -118,6 +118,15 @@ describe("POST /api/assignments/:id/breakdown-preview", () => {
     expect((await call(`/api/assignments/${ASN}/breakdown-preview`, { method: "POST", env: KEY, token: null })).status).toBe(401);
   });
 
+  it("only flags assignments whose linked item is a downloadable file", async () => {
+    await env.DB.prepare(
+      `INSERT INTO canvas_materials (assignment_id, canvas_host, canvas_course_id, module_id, item_id, title, item_type, html_url, download_url, linked_at)
+       VALUES (?, 'school.instructure.com', '101', '71', '9003', 'Week 1 overview', 'Page', ?, NULL, '2026-09-01')`,
+    ).bind(ASN, `${ORIGIN}/courses/101/modules/items/9003`).run();
+    const { deadlines } = await (await call("/api/deadlines?days=60")).json() as any;
+    expect(deadlines.find((d: any) => d.id === ASN).has_canvas_material).toBe(false);
+  });
+
   it("refuses files it can't read", async () => {
     vi.restoreAllMocks();
     stub(new TextEncoder().encode("not a docx"));
@@ -152,6 +161,15 @@ describe("POST /api/assignments/:id/tasks/bulk", () => {
       ["Answer Q1–22", "45m", null, null, "Pages 3–4"],
     ]);
     expect(await count("task_events")).toBeGreaterThanOrEqual(2);
+  });
+
+  it("puts new steps after every To Do task, including ones never dragged", async () => {
+    const unplaced = await addTask("Old unplaced task", "To Do", "repo-dashboard");
+    await call(`/api/assignments/${ASN}/tasks/bulk`, { method: "POST", json: { steps } });
+    const board = await (await call("/api/microtasks")).json() as { tasks: any[] };
+    expect(board.tasks.filter((t) => t.status === "To Do").map((t) => t.id)[0]).toBe(unplaced);
+    expect(board.tasks.filter((t) => t.status === "To Do").map((t) => t.description))
+      .toEqual(["Old unplaced task", "Review the slides", "Answer Q1–22"]);
   });
 
   it("keeps existing tasks without replace_todo", async () => {

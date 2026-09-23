@@ -67,20 +67,39 @@ export async function recordTaskCreated(db: D1Database, taskId: unknown, status:
   }
 }
 
-/** Rows of a table added by a later migration; none when it hasn't been applied yet. */
-async function optionalRows(db: D1Database, sql: string, table: string): Promise<Record<string, unknown>[]> {
+/** Rows from a table (or column) added by a later migration; none when it hasn't been applied yet. */
+async function optionalRows(db: D1Database, sql: string, table: string, column?: string): Promise<Record<string, unknown>[]> {
   try {
     return (await db.prepare(sql).all<Record<string, unknown>>()).results;
   } catch (e) {
-    if (e instanceof Error && e.message.includes(`no such table: ${table}`)) return [];
+    const msg = e instanceof Error ? e.message : "";
+    if (msg.includes(`no such table: ${table}`) || (column && msg.includes(`no such column: ${column}`))) return [];
     throw e;
   }
 }
 
-/** Assignments with a linked Canvas module file. */
+/** Assignments linked to a downloadable Canvas module file (not a page or link), i.e. ones Claude can break down. */
 export async function materialAssignmentIds(db: D1Database): Promise<Set<string>> {
-  const rows = await optionalRows(db, `SELECT assignment_id FROM canvas_materials`, "canvas_materials");
+  const rows = await optionalRows(
+    db, `SELECT assignment_id FROM canvas_materials WHERE download_url IS NOT NULL`, "canvas_materials", "download_url",
+  );
   return new Set(rows.map((r) => r["assignment_id"] as string));
+}
+
+/**
+ * The To Do column's task ids in board order (see listMicrotasks), optionally
+ * leaving out one assignment's college-tracker tasks.
+ */
+export async function todoColumnIds(db: D1Database, exceptAssignment?: string): Promise<number[]> {
+  const { results } = await db.prepare(
+    `SELECT t.id FROM tasks t
+     LEFT JOIN assignments a ON a.id = t.assignment_id
+     LEFT JOIN task_positions p ON p.task_id = t.id
+     WHERE ${ACADEMIC} AND t.status = 'To Do'` +
+    (exceptAssignment ? ` AND NOT (t.assignment_id = ? AND t.source_repo = 'college-tracker')` : ``) +
+    ` ORDER BY p.position IS NULL, p.position, a.due_date IS NULL, a.due_date, t.created_at, t.id`,
+  ).bind(...(exceptAssignment ? [exceptAssignment] : [])).all<{ id: number }>();
+  return results.map((r) => r.id);
 }
 
 function filters(url: URL): { sql: string; binds: string[] } {

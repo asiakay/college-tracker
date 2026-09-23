@@ -12,6 +12,7 @@ import { CanvasError } from "./canvas/client";
 import { canvasClient, loadConfig } from "./canvas/routes";
 import { DocError, extractDocument, type ExtractedDoc } from "./docs";
 import type { Env } from "./env";
+import { todoColumnIds } from "./microtasks";
 
 const MAX_STEPS = 12;
 const MAX_SAVE_STEPS = 20;
@@ -252,13 +253,14 @@ export async function saveBreakdown(env: Env, assignmentId: string, body: Record
 
   const replace = body["replace_todo"] === true;
   const removed = replace ? await todoCount(env.DB, assignmentId) : 0;
-  const top = await env.DB.prepare(
-    `SELECT COALESCE(MAX(p.position), 0) AS n FROM task_positions p JOIN tasks t ON t.id = p.task_id
-     WHERE t.status = 'To Do'` + (replace ? ` AND NOT (t.assignment_id = ? AND t.source_repo = 'college-tracker')` : ``),
-  ).bind(...(replace ? [assignmentId] : [])).first<{ n: number }>();
+  // Pin the current To Do order (unplaced tasks included) so the new steps land at its end.
+  const column = await todoColumnIds(env.DB, replace ? assignmentId : undefined);
   const now = new Date().toISOString();
 
-  const stmts: D1PreparedStatement[] = [];
+  const stmts: D1PreparedStatement[] = column.map((id, i) => env.DB.prepare(
+    `INSERT INTO task_positions (task_id, position, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT (task_id) DO UPDATE SET position = excluded.position, updated_at = excluded.updated_at`,
+  ).bind(id, i + 1, now));
   if (replace) {
     // Positions, events and links cascade. In Progress and Done work is never touched.
     stmts.push(env.DB.prepare(
@@ -274,7 +276,7 @@ export async function saveBreakdown(env: Env, assignmentId: string, body: Record
          VALUES (?, ?, ?, 'college-tracker', ?, 'To Do', ?)`,
       ).bind(s.description, asn.okr_id, assignmentId, s.time_spent, s.notes),
       env.DB.prepare(`INSERT INTO task_positions (task_id, position, updated_at) VALUES (last_insert_rowid(), ?, ?)`)
-        .bind((top?.n ?? 0) + i + 1, now),
+        .bind(column.length + i + 1, now),
     );
     if (s.link_url) {
       stmts.push(env.DB.prepare(`INSERT INTO task_links (task_id, url, label) VALUES (last_insert_rowid(), ?, ?)`)

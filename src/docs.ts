@@ -18,8 +18,8 @@ export class DocError extends Error {}
 function u16(b: Uint8Array, o: number): number { return b[o]! | (b[o + 1]! << 8); }
 function u32(b: Uint8Array, o: number): number { return (u16(b, o) | (u16(b, o + 2) << 16)) >>> 0; }
 
-async function inflateRaw(data: Uint8Array, limit: number): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+async function inflateRaw(data: Uint8Array, limit: number, format: "deflate" | "deflate-raw" = "deflate-raw"): Promise<Uint8Array> {
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream(format));
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -91,7 +91,7 @@ function attr(tag: string, name: string): string | null {
   return m ? decodeEntities(m[2] ?? m[3] ?? "") : null;
 }
 
-const URL_RE = /https?:\/\/[^\s<>"'()]+[^\s<>"'().,;:!?]/g;
+const URL_RE = /https?:\/\/[^\s<>"'()\\]+[^\s<>"'().,;:!?\\]/g;
 
 function httpUrl(s: string): string | null {
   try {
@@ -103,6 +103,57 @@ function httpUrl(s: string): string | null {
 function collectLinks(...sources: string[]): string[] {
   const out = new Set<string>();
   for (const s of sources) for (const m of s.matchAll(URL_RE)) { const u = httpUrl(m[0]); if (u) out.add(u); }
+  return [...out];
+}
+
+// ── PDF ──────────────────────────────────────────────────────────────────────
+
+const MAX_PDF_STREAMS = 300;
+const MAX_PDF_INFLATED = 10_000_000;
+
+function latin1(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return s;
+}
+
+/**
+ * URLs in a PDF: link annotations (/URI (...)) and URLs written out in the
+ * file, including inside Flate-compressed streams. Claude reads the PDF itself;
+ * this only tells us which links really are in it. Text drawn with custom font
+ * encodings can't be seen here, so a link shown only as text may be missed.
+ */
+export async function pdfLinks(bytes: Uint8Array): Promise<string[]> {
+  const raw = latin1(bytes);
+  const texts = [raw];
+  let inflated = 0;
+  let streams = 0;
+  for (const m of raw.matchAll(/stream\r?\n/g)) {
+    if (++streams > MAX_PDF_STREAMS || inflated > MAX_PDF_INFLATED) break;
+    const start = m.index! + m[0].length;
+    const end = raw.indexOf("endstream", start);
+    if (end < 0) break;
+    const header = raw.slice(Math.max(0, m.index! - 300), m.index!);
+    if (!/\/FlateDecode/.test(header)) continue;
+    // Use /Length when it is a direct number; otherwise drop the EOL before "endstream".
+    const length = Number([...header.matchAll(/\/Length\s+(\d+)(?!\s+\d+\s+R)/g)].pop()?.[1]);
+    let stop = end;
+    if (Number.isInteger(length) && start + length <= end) stop = start + length;
+    else while (stop > start && (raw[stop - 1] === "\n" || raw[stop - 1] === "\r")) stop--;
+    try {
+      const out = await inflateRaw(bytes.subarray(start, stop), MAX_PDF_INFLATED - inflated, "deflate");
+      inflated += out.byteLength;
+      texts.push(latin1(out));
+    } catch { /* truncated or not really Flate — skip */ }
+  }
+  const out = new Set<string>();
+  for (const t of texts) {
+    for (const m of t.matchAll(/\/URI\s*\(((?:\\.|[^\\)])*)\)/g)) {
+      const u = httpUrl(m[1]!.replace(/\\([()\\])/g, "$1"));
+      if (u) out.add(u);
+    }
+  }
+  for (const u of collectLinks(...texts)) out.add(u);
   return [...out];
 }
 
@@ -179,7 +230,7 @@ export async function extractDocument(bytes: Uint8Array, contentType: string, na
     const { text, links } = docxText(dec.decode(doc), dec.decode(entries.get("word/_rels/document.xml.rels") ?? new Uint8Array()));
     return { kind: "text", text: truncate(text), links };
   }
-  if (type === "application/pdf" || lower.endsWith(".pdf")) return { kind: "pdf", bytes, links: [] };
+  if (type === "application/pdf" || lower.endsWith(".pdf")) return { kind: "pdf", bytes, links: await pdfLinks(bytes) };
   if (type.startsWith("text/") || /\.(txt|md|html?)$/.test(lower)) {
     const raw = new TextDecoder().decode(bytes);
     const text = type === "text/html" || /\.html?$/.test(lower) ? stripHtml(raw) : raw;

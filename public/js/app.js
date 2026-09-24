@@ -394,6 +394,20 @@ function pickDetails(tasks, t, opts = {}) {
   return `${steps}${own || materials ? `<div class="mt-suggest-links pick-materials">${materials && steps ? '<span class="pick-materials-label">Materials</span>' : ''}${own}${materials}</div>` : ''}`;
 }
 
+/** "✓ Done" on a pick; the step boxes under it (picks.js) carry the same data-done-id. */
+function pickDoneBtn(t) {
+  return t && t.status !== 'Done'
+    ? `<button type="button" class="pick-done-btn" data-done-id="${t.id}" title="Move to Done">✓ Done</button>` : '';
+}
+
+/** Wire every data-done-id control in root; onDone(id) saves and re-renders. */
+function bindDoneButtons(root, onDone) {
+  root.querySelectorAll('[data-done-id]').forEach(btn => btn.addEventListener('click', async () => {
+    root.querySelectorAll('[data-done-id]').forEach(b => { b.disabled = true; });
+    await onDone(Number(btn.dataset.doneId));
+  }));
+}
+
 /**
  * Files linked before Materials links existed haven't been read yet: read each
  * once per page load, then re-render. Failures just leave the extra links out.
@@ -431,9 +445,10 @@ function renderSuggestions() {
   readMissingMaterialLinks(mtTasks, reloadKeepingPicks);
   el.innerHTML = `<div class="mt-suggest-head">${esc(picksHeading())}</div><ol>${mtPicks.map(p => {
     const t = mtTasks.find(x => x.id === p.task_id);
-    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}<div class="mt-suggest-reason">${esc(p.reason)}</div>${pickDetails(mtTasks, t)}</li>`;
+    return `<li><strong>${esc(t ? t.description : `Task ${p.task_id}`)}</strong>${t && t.assignment_title ? ` <span class="mt-asn">${esc(t.assignment_title)}</span>` : ''} ${pickDoneBtn(t)}<div class="mt-suggest-reason">${esc(p.reason)}</div>${pickDetails(mtTasks, t)}</li>`;
   }).join('')}</ol>`;
   bindCanvasLinkers(el);
+  bindDoneButtons(el, id => moveTaskToTop(id, 'Done'));
 }
 
 /** Let the student link an unlinked assignment to its Canvas assignment, then keep the picks. */
@@ -713,7 +728,7 @@ async function loadTodayNext(unsaved = null) {
       </div>`;
   } else {
     el.innerHTML = head + rows.map(({ p, i, t }) => `<div class="card today-next-card mt-pick-${i + 1}">
-        <div class="today-next-top"><span class="mt-pick-badge">#${i + 1}</span> <strong>${esc(t.description)}</strong></div>
+        <div class="today-next-top"><span><span class="mt-pick-badge">#${i + 1}</span> <strong>${esc(t.description)}</strong></span>${pickDoneBtn(t)}</div>
         <div class="mt-meta">
           ${t.course_name ? `<span class="chip chip-course">${esc(t.course_name)}</span>` : ''}
           ${t.assignment_title ? `<span class="mt-asn">${esc(t.assignment_title)}</span>` : ''}
@@ -723,6 +738,18 @@ async function loadTodayNext(unsaved = null) {
         ${pickDetails(tasks, t, { linksOnly: true })}
       </div>`).join('');
   }
+  bindDoneButtons(el, async id => {
+    // Same save as the board's status menu: the task goes to the top of Done.
+    const ids = [id, ...tasks.filter(t => t.status === 'Done' && t.id !== id).map(t => t.id)];
+    try {
+      const res = await api('/api/microtasks/column', { method: 'PUT', body: JSON.stringify({ status: 'Done', ordered_ids: ids }) });
+      if (res.error) throw new Error(res.error);
+      toast('Task done ✓');
+    } catch (err) {
+      if (err.message !== 'Unauthorized') toast(`Couldn't save: ${err.message}`, 'fail');
+    }
+    await loadTodayNext();
+  });
   el.querySelector('.today-next-board')?.addEventListener('click', e => { e.preventDefault(); switchTab('tasks'); });
   el.querySelector('#today-suggest-btn')?.addEventListener('click', async e => {
     const btn = e.currentTarget;

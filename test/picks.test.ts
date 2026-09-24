@@ -44,6 +44,13 @@ describe("next steps under a pick", () => {
     expect(html).not.toContain("more on the board");
   });
 
+  it("renders each step's box as a button that marks that step done", () => {
+    const list = [step(1), step(2, "To Do", { description: "Read <ch 2>" })];
+    const html = stepsHtml(list, list[0], esc);
+    expect(html).toContain('<button type="button" class="pick-step-box" data-done-id="1"');
+    expect(html).toContain('data-done-id="2" title="Mark done" aria-label="Mark “Read &lt;ch 2&gt;” done">☐</button>');
+  });
+
   it("renders nothing when the assignment has no other open steps", () => {
     expect(stepsHtml([step(1), step(2, "Done")], step(1), esc)).toBe("");
   });

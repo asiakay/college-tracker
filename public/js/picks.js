@@ -24,7 +24,7 @@ export function stepsHtml(tasks, pick, esc, n = 3) {
   if (steps.length < 2) return '';
   const rows = steps.map(({ task: t, isPick }) => `
     <li class="pick-step${isPick ? ' is-pick' : ''}">
-      <span class="pick-step-box" aria-hidden="true">${t.status === 'In Progress' ? '◐' : '☐'}</span>
+      <button type="button" class="pick-step-box" data-done-id="${t.id}" title="Mark done" aria-label="Mark “${esc(t.description)}” done">${t.status === 'In Progress' ? '◐' : '☐'}</button>
       <span class="pick-step-body">
         <span class="pick-step-desc">${esc(t.description)}</span>${t.time_spent ? `<span class="pick-step-meta"> · ${esc(t.time_spent)}</span>` : ''}${t.notes ? `<span class="pick-step-meta"> · ${esc(t.notes)}</span>` : ''}
         ${t.link_url ? `<a class="mt-task-link pick-step-link" href="${esc(t.link_url)}" target="_blank" rel="noopener" title="${esc(t.link_url)}">▶ ${esc(t.link_label || 'Open link')} ↗</a>` : ''}
